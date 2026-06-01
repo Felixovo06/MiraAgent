@@ -33,6 +33,10 @@ public class McpServerConfig {
     /** streamable HTTP 端点 URL。 */
     String url;
 
+    /** HTTP 请求自定义头（如鉴权 {@code x-api-key}），仅 HTTP 传输使用。 */
+    @Singular
+    Map<String, String> headers;
+
     /** 是否启用该 server。 */
     @Builder.Default
     boolean enabled = true;

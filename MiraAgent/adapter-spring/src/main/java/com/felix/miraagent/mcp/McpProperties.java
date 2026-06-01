@@ -42,6 +42,8 @@ public class McpProperties {
         private List<String> args = new ArrayList<>();
         private Map<String, String> env = new LinkedHashMap<>();
         private String url;
+        /** HTTP 传输自定义请求头（如鉴权 x-api-key）。 */
+        private Map<String, String> headers = new LinkedHashMap<>();
         private boolean enabled = true;
         private ToolRiskLevel toolRiskLevel = ToolRiskLevel.LOW;
         private String namePrefix;

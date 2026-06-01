@@ -11,6 +11,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -24,12 +26,18 @@ public class HttpJsonRpcTransport implements JsonRpcTransport {
     private final HttpClient httpClient;
     private final String url;
     private final String serverId;
+    private final Map<String, String> headers;
     private final AtomicLong idSeq = new AtomicLong(0);
 
     public HttpJsonRpcTransport(String serverId, String url, ObjectMapper mapper) {
+        this(serverId, url, mapper, Map.of());
+    }
+
+    public HttpJsonRpcTransport(String serverId, String url, ObjectMapper mapper, Map<String, String> headers) {
         this.serverId = serverId;
         this.url = url;
         this.mapper = mapper;
+        this.headers = headers == null ? Map.of() : new LinkedHashMap<>(headers);
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
@@ -66,11 +74,15 @@ public class HttpJsonRpcTransport implements JsonRpcTransport {
 
     private JsonNode post(JsonNode body) {
         try {
-            HttpRequest httpReq = HttpRequest.newBuilder()
+            HttpRequest.Builder builder = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .timeout(Duration.ofSeconds(60))
                     .header("Content-Type", "application/json")
-                    .header("Accept", "application/json, text/event-stream")
+                    .header("Accept", "application/json, text/event-stream");
+            for (Map.Entry<String, String> h : headers.entrySet()) {
+                builder.header(h.getKey(), h.getValue());
+            }
+            HttpRequest httpReq = builder
                     .POST(HttpRequest.BodyPublishers.ofString(mapper.writeValueAsString(body)))
                     .build();
             HttpResponse<String> resp = httpClient.send(httpReq, HttpResponse.BodyHandlers.ofString());

@@ -42,7 +42,7 @@ public class McpServerConnections {
         JsonRpcTransport transport = switch (s.getType()) {
             case STDIO -> new StdioJsonRpcTransport(s.getId(), s.getCommand(), s.getArgs(), s.getEnv(),
                     objectMapper, s.getRequestTimeoutMillis());
-            case HTTP -> new HttpJsonRpcTransport(s.getId(), s.getUrl(), objectMapper);
+            case HTTP -> new HttpJsonRpcTransport(s.getId(), s.getUrl(), objectMapper, s.getHeaders());
         };
         McpServerConfig config = McpServerConfig.builder()
                 .id(s.getId())
@@ -50,6 +50,7 @@ public class McpServerConnections {
                 .command(s.getCommand())
                 .args(s.getArgs())
                 .url(s.getUrl())
+                .headers(s.getHeaders())
                 .enabled(s.isEnabled())
                 .toolRiskLevel(s.getToolRiskLevel())
                 .namePrefix(s.getNamePrefix())
