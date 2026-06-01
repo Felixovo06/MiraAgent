@@ -27,6 +27,15 @@ public interface SkillStore {
     /** 列出 skill 目录下某子目录（references/examples）的文件名。 */
     List<String> listResources(String skillId, String subDir);
 
+    /** 仅加载 metadata.json（不读正文）。 */
+    Optional<SkillMetadata> loadMetadata(String skillId);
+
+    /** 仅覆盖写 metadata.json（不动 SKILL.md，不追加 history）。用于统计/pinned 更新。 */
+    void saveMetadata(SkillMetadata metadata);
+
+    /** 追加一条事件到 history.jsonl。 */
+    void appendHistory(String skillId, SkillUsageEvent event);
+
     /** 枚举所有 skill 的 metadata（用于索引重建）。 */
     List<SkillMetadata> listAll();
 }

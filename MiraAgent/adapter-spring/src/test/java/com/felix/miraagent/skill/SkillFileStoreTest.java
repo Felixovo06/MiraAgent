@@ -119,7 +119,7 @@ class SkillFileStoreTest {
         store.archive("code-review");
         List<String> history = Files.readAllLines(baseDir.resolve("code-review/history.jsonl"));
         assertEquals(2, history.size());
-        assertTrue(history.get(0).contains("created"));
-        assertTrue(history.get(1).contains("archived"));
+        assertTrue(history.get(0).contains("CREATED"));
+        assertTrue(history.get(1).contains("ARCHIVED"));
     }
 }

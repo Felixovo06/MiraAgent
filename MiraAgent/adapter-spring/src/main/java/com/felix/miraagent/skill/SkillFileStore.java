@@ -12,9 +12,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Stream;
 
@@ -73,7 +71,9 @@ public class SkillFileStore implements SkillStore {
             Files.writeString(dir.resolve(METADATA_JSON), objectMapper.writeValueAsString(metadata),
                     StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
 
-            appendHistory(dir, isNew ? "created" : "updated", metadata.getVersion());
+            appendHistory(skillId, SkillUsageEvent.builder()
+                    .type(isNew ? SkillUsageEventType.CREATED : SkillUsageEventType.UPDATED)
+                    .skillId(skillId).at(Instant.now()).build());
 
             return SkillWriteResult.builder()
                     .skillId(skillId)
@@ -101,15 +101,16 @@ public class SkillFileStore implements SkillStore {
                     .build();
         }
         try {
+            Instant now = Instant.now();
             SkillMetadata current = objectMapper.readValue(Files.readString(metaPath, StandardCharsets.UTF_8),
                     SkillMetadata.class);
             SkillMetadata archived = current.toBuilder()
                     .status(SkillStatus.ARCHIVED)
-                    .updatedAt(Instant.now())
+                    .updatedAt(now)
                     .build();
             Files.writeString(metaPath, objectMapper.writeValueAsString(archived),
                     StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING);
-            appendHistory(dir, "archived", archived.getVersion());
+            appendHistory(skillId, SkillUsageEvent.of(SkillUsageEventType.ARCHIVED, skillId, now));
             return SkillWriteResult.builder()
                     .skillId(skillId)
                     .sourceUri(baseDir.relativize(dir.resolve(SKILL_MD)).toString())
@@ -184,22 +185,7 @@ public class SkillFileStore implements SkillStore {
     }
 
     @Override
-    public List<SkillMetadata> listAll() {
-        if (!Files.exists(baseDir)) {
-            return List.of();
-        }
-        List<SkillMetadata> result = new ArrayList<>();
-        try (Stream<Path> stream = Files.list(baseDir)) {
-            for (Path dir : stream.filter(Files::isDirectory).toList()) {
-                loadMetadata(dir.getFileName().toString()).ifPresent(result::add);
-            }
-        } catch (IOException e) {
-            log.warn("Failed to list skills under {}", baseDir, e);
-        }
-        return result;
-    }
-
-    private Optional<SkillMetadata> loadMetadata(String skillId) {
+    public Optional<SkillMetadata> loadMetadata(String skillId) {
         Path metaPath = skillDir(skillId).resolve(METADATA_JSON);
         if (!Files.exists(metaPath)) {
             return Optional.empty();
@@ -213,17 +199,51 @@ public class SkillFileStore implements SkillStore {
         }
     }
 
-    private void appendHistory(Path dir, String eventType, int version) {
-        Map<String, Object> entry = new LinkedHashMap<>();
-        entry.put("type", eventType);
-        entry.put("at", Instant.now().toString());
-        entry.put("version", version);
+    @Override
+    public synchronized void saveMetadata(SkillMetadata metadata) {
+        if (metadata == null || metadata.getSkillId() == null) {
+            return;
+        }
+        Path metaPath = skillDir(metadata.getSkillId()).resolve(METADATA_JSON);
+        if (!Files.exists(metaPath.getParent())) {
+            throw new IllegalStateException("skill dir not found: " + metadata.getSkillId());
+        }
         try {
-            Files.writeString(dir.resolve(HISTORY_JSONL), objectMapper.writeValueAsString(entry) + "\n",
+            Files.writeString(metaPath, objectMapper.writeValueAsString(metadata),
+                    StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to write metadata.json for " + metadata.getSkillId(), e);
+        }
+    }
+
+    @Override
+    public void appendHistory(String skillId, SkillUsageEvent event) {
+        Path dir = skillDir(skillId);
+        if (!Files.exists(dir)) {
+            return;
+        }
+        try {
+            Files.writeString(dir.resolve(HISTORY_JSONL), objectMapper.writeValueAsString(event) + "\n",
                     StandardCharsets.UTF_8, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException e) {
-            log.warn("Failed to append history for skill at {}", dir, e);
+            log.warn("Failed to append history for skill {}", skillId, e);
         }
+    }
+
+    @Override
+    public List<SkillMetadata> listAll() {
+        if (!Files.exists(baseDir)) {
+            return List.of();
+        }
+        List<SkillMetadata> result = new ArrayList<>();
+        try (Stream<Path> stream = Files.list(baseDir)) {
+            for (Path dir : stream.filter(Files::isDirectory).toList()) {
+                loadMetadata(dir.getFileName().toString()).ifPresent(result::add);
+            }
+        } catch (IOException e) {
+            log.warn("Failed to list skills under {}", baseDir, e);
+        }
+        return result;
     }
 
     private Path skillDir(String skillId) {

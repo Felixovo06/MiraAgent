@@ -34,6 +34,11 @@ class DefaultSkillLoaderTest {
             }
             @Override public String readFile(String skillId, String relativePath) { return "res:" + relativePath; }
             @Override public List<String> listResources(String skillId, String subDir) { return List.of(subDir + "-file"); }
+            @Override public Optional<SkillMetadata> loadMetadata(String skillId) {
+                return all.stream().filter(m -> m.getSkillId().equals(skillId)).findFirst();
+            }
+            @Override public void saveMetadata(SkillMetadata metadata) { }
+            @Override public void appendHistory(String skillId, SkillUsageEvent event) { }
             @Override public List<SkillMetadata> listAll() { return new ArrayList<>(all); }
         };
     }

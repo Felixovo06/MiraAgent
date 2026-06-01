@@ -35,6 +35,11 @@ public class SkillConfig {
     }
 
     @Bean
+    public SkillUsageTracker skillUsageTracker(SkillStore skillStore) {
+        return new DefaultSkillUsageTracker(skillStore);
+    }
+
+    @Bean
     @Conditional(UsableDataSourceCondition.class)
     public SkillIndexRebuildService skillIndexRebuildService(SkillStore skillStore,
                                                              SkillIndexRepository skillIndexRepository) {
