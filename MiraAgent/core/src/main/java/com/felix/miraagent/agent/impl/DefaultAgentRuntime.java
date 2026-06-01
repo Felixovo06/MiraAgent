@@ -6,6 +6,7 @@ import com.felix.miraagent.model.Message;
 import com.felix.miraagent.model.MessageRole;
 import com.felix.miraagent.session.Session;
 import com.felix.miraagent.session.SessionStore;
+import com.felix.miraagent.tools.ToolPermissionPolicy;
 import com.felix.miraagent.tools.impl.DefaultToolPermissionPolicy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,12 +25,19 @@ public class DefaultAgentRuntime implements AgentRuntime {
     private final SessionStore sessionStore;
     private final Map<String, InterruptSignal> activeRuns = new ConcurrentHashMap<>();
     private final ModelConfig defaultModelConfig;
+    private final ToolPermissionPolicy permissionPolicy;
 
     public DefaultAgentRuntime(ConversationLoop conversationLoop, SessionStore sessionStore,
                                ModelConfig defaultModelConfig) {
+        this(conversationLoop, sessionStore, defaultModelConfig, new DefaultToolPermissionPolicy());
+    }
+
+    public DefaultAgentRuntime(ConversationLoop conversationLoop, SessionStore sessionStore,
+                               ModelConfig defaultModelConfig, ToolPermissionPolicy permissionPolicy) {
         this.conversationLoop = conversationLoop;
         this.sessionStore = sessionStore;
         this.defaultModelConfig = defaultModelConfig;
+        this.permissionPolicy = permissionPolicy != null ? permissionPolicy : new DefaultToolPermissionPolicy();
     }
 
     @Override
@@ -62,7 +70,7 @@ public class DefaultAgentRuntime implements AgentRuntime {
                 .toolConfig(input.getEnabledTools().isEmpty() ? null
                         : ToolConfig.builder().enabledToolNames(new java.util.HashSet<>(input.getEnabledTools())).build())
                 .iterationBudget(IterationBudget.defaultBudget())
-                .permissionPolicy(new DefaultToolPermissionPolicy())
+                .permissionPolicy(permissionPolicy)
                 .interruptSignal(signal)
                 .streamCallback(input.getStreamCallback())
                 .build();

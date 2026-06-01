@@ -40,9 +40,10 @@ class ToolSystemTest {
     void registerAndListTools() {
         var ctx = ToolResolveContext.builder().build();
         var tools = registry.listAvailable(ctx);
-        assertEquals(2, tools.size());
+        assertEquals(3, tools.size());
         assertTrue(tools.stream().anyMatch(t -> t.getName().equals("note")));
         assertTrue(tools.stream().anyMatch(t -> t.getName().equals("todo")));
+        assertTrue(tools.stream().anyMatch(t -> t.getName().equals("calculator")));
     }
 
     @Test

@@ -11,6 +11,7 @@ public class BuiltinTools {
     public static void registerAll(ToolRegistry registry) {
         registry.register(noteDefinition(), new NoteToolHandler());
         registry.register(todoDefinition(), new TodoToolHandler());
+        registry.register(CalculatorToolHandler.definition(), new CalculatorToolHandler());
     }
 
     public static ToolDefinition noteDefinition() {

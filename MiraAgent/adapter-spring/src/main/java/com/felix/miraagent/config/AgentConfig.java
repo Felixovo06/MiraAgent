@@ -28,6 +28,11 @@ import com.felix.miraagent.tools.artifact.ArtifactProperties;
 import com.felix.miraagent.tools.artifact.FileToolResultCache;
 import com.felix.miraagent.tools.artifact.ToolResultCache;
 import com.felix.miraagent.tools.builtin.BuiltinTools;
+import com.felix.miraagent.tools.builtin.FileReadToolHandler;
+import com.felix.miraagent.tools.builtin.FileToolProperties;
+import com.felix.miraagent.tools.builtin.FileWriteToolHandler;
+import com.felix.miraagent.tools.builtin.ToolsProperties;
+import com.felix.miraagent.tools.builtin.WebFetchToolHandler;
 import com.felix.miraagent.tools.handlers.MemoryWriterToolHandler;
 import com.felix.miraagent.tools.handlers.RecallMemoryToolHandler;
 import com.felix.miraagent.tools.handlers.SkillManageToolHandler;
@@ -37,6 +42,7 @@ import com.felix.miraagent.skill.SkillManager;
 import com.felix.miraagent.tools.impl.DefaultToolDispatcher;
 import com.felix.miraagent.tools.impl.InMemoryToolExecutionStore;
 import com.felix.miraagent.tools.impl.InMemoryToolRegistry;
+import com.felix.miraagent.tools.impl.RiskThresholdToolPermissionPolicy;
 import com.felix.miraagent.trace.TraceStore;
 import com.felix.miraagent.trace.impl.InMemoryTraceStore;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
@@ -47,7 +53,8 @@ import org.springframework.context.annotation.Configuration;
 import java.util.Optional;
 
 @Configuration
-@EnableConfigurationProperties({ArtifactProperties.class, SummaryProperties.class})
+@EnableConfigurationProperties({ArtifactProperties.class, SummaryProperties.class,
+        FileToolProperties.class, ToolsProperties.class})
 public class AgentConfig {
 
     @Bean
@@ -72,9 +79,15 @@ public class AgentConfig {
     @ConditionalOnMissingBean(ToolRegistry.class)
     public ToolRegistry toolRegistry(Optional<MemoryRetriever> memoryRetriever,
                                      Optional<SerializedMemoryWriter> memoryWriter,
-                                     Optional<SkillManager> skillManager) {
+                                     Optional<SkillManager> skillManager,
+                                     FileToolProperties fileToolProperties) {
         InMemoryToolRegistry registry = new InMemoryToolRegistry();
         BuiltinTools.registerAll(registry);
+        registry.register(WebFetchToolHandler.definition(), new WebFetchToolHandler());
+        registry.register(FileReadToolHandler.definition(),
+                new FileReadToolHandler(fileToolProperties.getBaseDir()));
+        registry.register(FileWriteToolHandler.definition(),
+                new FileWriteToolHandler(fileToolProperties.getBaseDir()));
         memoryRetriever.ifPresent(r ->
                 registry.register(RecallMemoryToolHandler.definition(), new RecallMemoryToolHandler(r)));
         memoryWriter.ifPresent(w ->
@@ -141,12 +154,13 @@ public class AgentConfig {
 
     @Bean
     public AgentRuntime agentRuntime(ConversationLoop conversationLoop, SessionStore sessionStore,
-                                     ModelProperties modelProperties) {
+                                     ModelProperties modelProperties, ToolsProperties toolsProperties) {
         ModelConfig defaultModelConfig = ModelConfig.builder()
                 .modelName(modelProperties.getName())
                 .temperature(modelProperties.getTemperature())
                 .maxTokens(modelProperties.getMaxTokens())
                 .build();
-        return new DefaultAgentRuntime(conversationLoop, sessionStore, defaultModelConfig);
+        var permissionPolicy = new RiskThresholdToolPermissionPolicy(toolsProperties.getMaxRiskLevel());
+        return new DefaultAgentRuntime(conversationLoop, sessionStore, defaultModelConfig, permissionPolicy);
     }
 }

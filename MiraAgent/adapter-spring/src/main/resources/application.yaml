@@ -39,6 +39,14 @@ mira:
   #       type: http
   #       url: http://localhost:9000/mcp
 
+  # 内置工具：calculator(LOW)/web_fetch(MEDIUM)/file_read(MEDIUM)/file_write(HIGH) + note/todo。
+  # max-risk-level 控制放行阈值：默认 medium，危险写入工具 file_write(HIGH) 被门控；
+  # 抬到 high 才放行（危险工具的显式确认流程）。file.base-dir 为文件工具沙箱根目录。
+  tools:
+    max-risk-level: ${MIRA_TOOLS_MAX_RISK:medium}
+    file:
+      base-dir: ${MIRA_TOOLS_FILE_DIR:${user.home}/.miraagent/files}
+
 logging:
   level:
     com.felix.miraagent: DEBUG
