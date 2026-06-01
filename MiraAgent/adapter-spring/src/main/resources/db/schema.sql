@@ -90,3 +90,30 @@ create index if not exists idx_memory_index_fts on memory_index using gin(to_tsv
 -- create extension if not exists vector;
 -- alter table memory_index add column if not exists embedding vector(1536);
 -- create index if not exists idx_memory_index_embedding on memory_index using ivfflat (embedding vector_cosine_ops) with (lists = 100);
+
+-- P2 Skills 索引表（文件 metadata.json 为事实源，本表仅索引/状态/统计/来源）
+create table if not exists skills (
+    id                text        primary key,
+    name              text        not null,
+    description       text,
+    status            text        not null default 'ACTIVE',
+    tags              jsonb,
+    pinned            boolean     not null default false,
+    use_count         integer     not null default 0,
+    version           integer     not null default 1,
+    source_uri        text,
+    source_trace_id   text,
+    source_session_id text,
+    embedding_ref     text,
+    last_used_at      timestamptz,
+    archived_at       timestamptz,
+    created_at        timestamptz not null default now(),
+    updated_at        timestamptz not null default now()
+);
+
+create index if not exists idx_skills_status on skills(status) where archived_at is null;
+create index if not exists idx_skills_name_trgm on skills using gin(name gin_trgm_ops);
+
+-- P2 Step4: skill 去重向量列（pgvector 已装时启用）
+-- alter table skills add column if not exists embedding vector(1536);
+-- create index if not exists idx_skills_embedding on skills using ivfflat (embedding vector_cosine_ops) with (lists = 100);
