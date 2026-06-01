@@ -60,24 +60,34 @@ export function streamChat(
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
       let buffer = ''
+      // eventName 必须跨 read() 分块保持：SSE 一帧的 event: 行与 data: 行可能落在不同网络块，
+      // 若每块重置会丢掉 event 名导致该帧（含 done）被丢弃、流卡死。
+      let eventName = ''
+
+      const handleLine = (raw: string) => {
+        const line = raw.replace(/\r$/, '')
+        if (line === '') {
+          eventName = '' // 空行 = 一帧结束
+          return
+        }
+        if (line.startsWith('event:')) {
+          eventName = line.slice(6).trim()
+        } else if (line.startsWith('data:')) {
+          handleStreamData(eventName, line.slice(5).trim(), onEvent, onError)
+        }
+      }
 
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
         buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() ?? ''
-
-        let eventName = ''
-        for (const line of lines) {
-          if (line.startsWith('event:')) {
-            eventName = line.slice(6).trim()
-          } else if (line.startsWith('data:')) {
-            const data = line.slice(5).trim()
-            handleStreamData(eventName, data, onEvent, onError)
-          }
+        let idx
+        while ((idx = buffer.indexOf('\n')) >= 0) {
+          handleLine(buffer.slice(0, idx))
+          buffer = buffer.slice(idx + 1)
         }
       }
+      if (buffer) handleLine(buffer)
     })
     .catch((err) => {
       if (err.name !== 'AbortError') onError(String(err))
