@@ -1,5 +1,6 @@
 package com.felix.miraagent.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.felix.miraagent.agent.ModelConfig;
 import com.felix.miraagent.agent.AgentRuntime;
 import com.felix.miraagent.agent.impl.ConversationLoop;
@@ -15,6 +16,9 @@ import com.felix.miraagent.session.impl.InMemorySessionStore;
 import com.felix.miraagent.tools.ToolDispatcher;
 import com.felix.miraagent.tools.ToolExecutionStore;
 import com.felix.miraagent.tools.ToolRegistry;
+import com.felix.miraagent.tools.artifact.ArtifactProperties;
+import com.felix.miraagent.tools.artifact.FileToolResultCache;
+import com.felix.miraagent.tools.artifact.ToolResultCache;
 import com.felix.miraagent.tools.builtin.BuiltinTools;
 import com.felix.miraagent.tools.handlers.RecallMemoryToolHandler;
 import com.felix.miraagent.tools.impl.DefaultToolDispatcher;
@@ -23,12 +27,14 @@ import com.felix.miraagent.tools.impl.InMemoryToolRegistry;
 import com.felix.miraagent.trace.TraceStore;
 import com.felix.miraagent.trace.impl.InMemoryTraceStore;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 import java.util.Optional;
 
 @Configuration
+@EnableConfigurationProperties(ArtifactProperties.class)
 public class AgentConfig {
 
     @Bean
@@ -72,15 +78,22 @@ public class AgentConfig {
     }
 
     @Bean
+    public ToolResultCache fileToolResultCache(ArtifactProperties props, ObjectMapper objectMapper) {
+        return new FileToolResultCache(props, objectMapper);
+    }
+
+    @Bean
     public ConversationLoop conversationLoop(ModelClient modelClient, PromptBuilder promptBuilder,
                                              ToolRegistry toolRegistry, ToolDispatcher toolDispatcher,
                                              SessionStore sessionStore, TraceStore traceStore,
                                              ToolExecutionStore toolExecutionStore,
                                              Optional<MemoryStore> memoryStore,
-                                             Optional<MemoryRetriever> memoryRetriever) {
+                                             Optional<MemoryRetriever> memoryRetriever,
+                                             Optional<ToolResultCache> toolResultCache) {
         return new ConversationLoop(modelClient, promptBuilder, toolRegistry, toolDispatcher,
                 sessionStore, traceStore, toolExecutionStore,
-                memoryStore.orElse(null), memoryRetriever.orElse(null));
+                memoryStore.orElse(null), memoryRetriever.orElse(null),
+                toolResultCache.orElse(null));
     }
 
     @Bean

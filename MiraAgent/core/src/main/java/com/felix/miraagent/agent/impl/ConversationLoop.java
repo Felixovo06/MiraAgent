@@ -14,12 +14,16 @@ import com.felix.miraagent.tools.ToolExecutionResult;
 import com.felix.miraagent.tools.ToolExecutionStore;
 import com.felix.miraagent.tools.ToolRegistry;
 import com.felix.miraagent.tools.ToolResolveContext;
+import com.felix.miraagent.tools.artifact.ToolResultArtifact;
+import com.felix.miraagent.tools.artifact.ToolResultBudget;
+import com.felix.miraagent.tools.artifact.ToolResultCache;
 import com.felix.miraagent.trace.TraceEvent;
 import com.felix.miraagent.trace.TraceEventType;
 import com.felix.miraagent.trace.TraceStore;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Instant;
 import java.util.*;
 
 public class ConversationLoop {
@@ -35,6 +39,7 @@ public class ConversationLoop {
     private final ToolExecutionStore toolExecutionStore;
     private final MemoryStore memoryStore;
     private final MemoryRetriever memoryRetriever;
+    private final ToolResultCache toolResultCache;
 
     public ConversationLoop(ModelClient modelClient, PromptBuilder promptBuilder,
                             ToolRegistry toolRegistry, ToolDispatcher toolDispatcher,
@@ -49,6 +54,16 @@ public class ConversationLoop {
                             SessionStore sessionStore, TraceStore traceStore,
                             ToolExecutionStore toolExecutionStore,
                             MemoryStore memoryStore, MemoryRetriever memoryRetriever) {
+        this(modelClient, promptBuilder, toolRegistry, toolDispatcher, sessionStore, traceStore,
+                toolExecutionStore, memoryStore, memoryRetriever, null);
+    }
+
+    public ConversationLoop(ModelClient modelClient, PromptBuilder promptBuilder,
+                            ToolRegistry toolRegistry, ToolDispatcher toolDispatcher,
+                            SessionStore sessionStore, TraceStore traceStore,
+                            ToolExecutionStore toolExecutionStore,
+                            MemoryStore memoryStore, MemoryRetriever memoryRetriever,
+                            ToolResultCache toolResultCache) {
         this.modelClient = modelClient;
         this.promptBuilder = promptBuilder;
         this.toolRegistry = toolRegistry;
@@ -58,6 +73,7 @@ public class ConversationLoop {
         this.toolExecutionStore = toolExecutionStore;
         this.memoryStore = memoryStore;
         this.memoryRetriever = memoryRetriever;
+        this.toolResultCache = toolResultCache;
     }
 
     public RunResult run(AgentRunRequest request) {
@@ -220,12 +236,30 @@ public class ConversationLoop {
                             Map.of("tool", result.getToolName(), "status", result.getStatus().name()));
                     emitToolResult(request, result);
 
+                    String modelVisibleContent = result.getModelVisibleContent();
+                    if (toolResultCache != null && ToolResultBudget.shouldExternalize(modelVisibleContent)) {
+                        ToolResultArtifact artifact = ToolResultArtifact.builder()
+                                .artifactId(UUID.randomUUID().toString())
+                                .toolCallId(result.getToolCallId())
+                                .toolName(result.getToolName())
+                                .content(modelVisibleContent)
+                                .contentType("text/plain")
+                                .sizeBytes(modelVisibleContent != null ? modelVisibleContent.getBytes().length : 0)
+                                .createdAt(Instant.now())
+                                .build();
+                        String uri = toolResultCache.store(artifact);
+                        String preview = modelVisibleContent != null && modelVisibleContent.length() > 200
+                                ? modelVisibleContent.substring(0, 200) + "..."
+                                : modelVisibleContent;
+                        modelVisibleContent = "[artifact: " + uri + "]\n" + preview;
+                    }
+
                     Message toolMsg = Message.builder()
                             .id(UUID.randomUUID().toString())
                             .role(MessageRole.TOOL)
                             .toolCallId(result.getToolCallId())
                             .toolName(result.getToolName())
-                            .content(result.getModelVisibleContent())
+                            .content(modelVisibleContent)
                             .build();
                     sessionStore.appendMessage(sessionId, toolMsg);
                     conversationHistory.add(toolMsg);
