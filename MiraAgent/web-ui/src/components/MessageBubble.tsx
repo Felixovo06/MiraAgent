@@ -1,3 +1,5 @@
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import './MessageBubble.css'
 
 interface Props {
@@ -19,10 +21,14 @@ export default function MessageBubble({ role, content, pending }: Props) {
       )}
       <div className={`bubble ${isUser ? 'bubble-user' : 'bubble-bot'}`}>
         {hasContent ? (
-          <p className="bubble-text">
-            {content}
-            {pending && <span className="cursor" />}
-          </p>
+          isUser ? (
+            <p className="bubble-text">{content}</p>
+          ) : (
+            <div className="bubble-md">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+              {pending && <span className="cursor" />}
+            </div>
+          )
         ) : pending ? (
           <span className="thinking">
             <i /><i /><i />
