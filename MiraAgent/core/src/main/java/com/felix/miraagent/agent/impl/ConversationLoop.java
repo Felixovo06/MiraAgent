@@ -1,6 +1,8 @@
 package com.felix.miraagent.agent.impl;
 
 import com.felix.miraagent.agent.*;
+import com.felix.miraagent.memory.MemoryRetriever;
+import com.felix.miraagent.memory.MemoryStore;
 import com.felix.miraagent.model.*;
 import com.felix.miraagent.prompt.PromptBuildRequest;
 import com.felix.miraagent.prompt.PromptBuildResult;
@@ -31,11 +33,22 @@ public class ConversationLoop {
     private final SessionStore sessionStore;
     private final TraceStore traceStore;
     private final ToolExecutionStore toolExecutionStore;
+    private final MemoryStore memoryStore;
+    private final MemoryRetriever memoryRetriever;
 
     public ConversationLoop(ModelClient modelClient, PromptBuilder promptBuilder,
                             ToolRegistry toolRegistry, ToolDispatcher toolDispatcher,
                             SessionStore sessionStore, TraceStore traceStore,
                             ToolExecutionStore toolExecutionStore) {
+        this(modelClient, promptBuilder, toolRegistry, toolDispatcher, sessionStore, traceStore,
+                toolExecutionStore, null, null);
+    }
+
+    public ConversationLoop(ModelClient modelClient, PromptBuilder promptBuilder,
+                            ToolRegistry toolRegistry, ToolDispatcher toolDispatcher,
+                            SessionStore sessionStore, TraceStore traceStore,
+                            ToolExecutionStore toolExecutionStore,
+                            MemoryStore memoryStore, MemoryRetriever memoryRetriever) {
         this.modelClient = modelClient;
         this.promptBuilder = promptBuilder;
         this.toolRegistry = toolRegistry;
@@ -43,6 +56,8 @@ public class ConversationLoop {
         this.sessionStore = sessionStore;
         this.traceStore = traceStore;
         this.toolExecutionStore = toolExecutionStore;
+        this.memoryStore = memoryStore;
+        this.memoryRetriever = memoryRetriever;
     }
 
     public RunResult run(AgentRunRequest request) {
@@ -82,8 +97,20 @@ public class ConversationLoop {
                             ? request.getToolConfig().getEnabledToolNames() : Set.of())
                     .build();
 
+            String userProfileSummary = "";
+            String relationshipMemory = "";
+            if (memoryStore != null) {
+                userProfileSummary = truncate(memoryStore.readFile(request.getUserId(), "USER.md"), 500);
+                String charId = request.getCharacterProfile() != null ? request.getCharacterProfile().getId() : null;
+                if (charId != null) {
+                    relationshipMemory = truncate(memoryStore.readFile(request.getUserId(), "characters/" + charId + "/RELATIONSHIP.md"), 500);
+                }
+            }
+
             var promptRequest = PromptBuildRequest.builder()
                     .characterProfile(request.getCharacterProfile())
+                    .userProfileSummary(userProfileSummary)
+                    .relationshipMemory(relationshipMemory)
                     .sessionHistory(conversationHistory)
                     .toolDefinitions(toolRegistry.listAvailable(resolveCtx))
                     .contextBudget(lastRealInputTokens)
@@ -307,6 +334,11 @@ public class ConversationLoop {
             }
         }
         return handle.await();
+    }
+
+    private String truncate(String text, int maxChars) {
+        if (text == null || text.length() <= maxChars) return text != null ? text : "";
+        return text.substring(0, maxChars);
     }
 
     private static class RunInterruptedException extends RuntimeException {

@@ -2,6 +2,7 @@ package com.felix.miraagent.memory;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.felix.miraagent.memory.jdbc.JdbcMemoryIndexRepository;
+import com.felix.miraagent.memory.jdbc.JdbcMemoryRetriever;
 import com.felix.miraagent.memory.jdbc.MemoryIndexRebuildService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -37,5 +38,11 @@ public class MemoryConfig {
                                                                MemoryIndexRepository memoryIndexRepository,
                                                                MemoryProperties memoryProperties) {
         return new MemoryIndexRebuildService(memoryStore, memoryIndexRepository, memoryProperties);
+    }
+
+    @Bean
+    @ConditionalOnBean(DataSource.class)
+    public MemoryRetriever memoryRetriever(JdbcTemplate jdbcTemplate, ObjectMapper objectMapper) {
+        return new JdbcMemoryRetriever(jdbcTemplate, objectMapper);
     }
 }

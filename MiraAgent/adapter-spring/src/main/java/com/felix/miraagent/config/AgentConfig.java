@@ -4,6 +4,8 @@ import com.felix.miraagent.agent.ModelConfig;
 import com.felix.miraagent.agent.AgentRuntime;
 import com.felix.miraagent.agent.impl.ConversationLoop;
 import com.felix.miraagent.agent.impl.DefaultAgentRuntime;
+import com.felix.miraagent.memory.MemoryRetriever;
+import com.felix.miraagent.memory.MemoryStore;
 import com.felix.miraagent.model.ModelClient;
 import com.felix.miraagent.model.ModelProperties;
 import com.felix.miraagent.prompt.PromptBuilder;
@@ -14,6 +16,7 @@ import com.felix.miraagent.tools.ToolDispatcher;
 import com.felix.miraagent.tools.ToolExecutionStore;
 import com.felix.miraagent.tools.ToolRegistry;
 import com.felix.miraagent.tools.builtin.BuiltinTools;
+import com.felix.miraagent.tools.handlers.RecallMemoryToolHandler;
 import com.felix.miraagent.tools.impl.DefaultToolDispatcher;
 import com.felix.miraagent.tools.impl.InMemoryToolExecutionStore;
 import com.felix.miraagent.tools.impl.InMemoryToolRegistry;
@@ -22,6 +25,8 @@ import com.felix.miraagent.trace.impl.InMemoryTraceStore;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+
+import java.util.Optional;
 
 @Configuration
 public class AgentConfig {
@@ -46,9 +51,11 @@ public class AgentConfig {
 
     @Bean
     @ConditionalOnMissingBean(ToolRegistry.class)
-    public ToolRegistry toolRegistry() {
+    public ToolRegistry toolRegistry(Optional<MemoryRetriever> memoryRetriever) {
         InMemoryToolRegistry registry = new InMemoryToolRegistry();
         BuiltinTools.registerAll(registry);
+        memoryRetriever.ifPresent(r ->
+                registry.register(RecallMemoryToolHandler.definition(), new RecallMemoryToolHandler(r)));
         return registry;
     }
 
@@ -68,9 +75,12 @@ public class AgentConfig {
     public ConversationLoop conversationLoop(ModelClient modelClient, PromptBuilder promptBuilder,
                                              ToolRegistry toolRegistry, ToolDispatcher toolDispatcher,
                                              SessionStore sessionStore, TraceStore traceStore,
-                                             ToolExecutionStore toolExecutionStore) {
+                                             ToolExecutionStore toolExecutionStore,
+                                             Optional<MemoryStore> memoryStore,
+                                             Optional<MemoryRetriever> memoryRetriever) {
         return new ConversationLoop(modelClient, promptBuilder, toolRegistry, toolDispatcher,
-                sessionStore, traceStore, toolExecutionStore);
+                sessionStore, traceStore, toolExecutionStore,
+                memoryStore.orElse(null), memoryRetriever.orElse(null));
     }
 
     @Bean
