@@ -28,6 +28,7 @@ mira:
   #       command: python3
   #       args: [ "scripts/mcp/echo_mcp_server.py" ]
   #       tool-risk-level: low
+  #       request-timeout-millis: 30000   # 读响应超时,防 server 卡死阻塞;失败会自动重连重握手
   #     # 官方 server 示例（需联网拉取）：
   #     - id: filesystem
   #       type: stdio

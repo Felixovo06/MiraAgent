@@ -121,6 +121,24 @@ class McpClientTest {
     }
 
     @Test
+    void callToolRecoversByReconnectingAndReinitializing() {
+        var transport = new FakeJsonRpcTransport();
+        var c = client(transport);
+        c.initialize();
+        transport.breakConnection = true;   // 下次 tools/call 失败
+
+        ObjectNode args = mapper.createObjectNode();
+        args.put("message", "after-recovery");
+        McpToolResult result = c.callTool("echo", args);
+
+        assertEquals(1, transport.reconnects, "应触发一次重连");
+        assertFalse(result.isError());
+        assertEquals("echo: after-recovery", result.getText());
+        // 重连后应重新握手
+        assertEquals(2, transport.requestedMethods.stream().filter("initialize"::equals).count());
+    }
+
+    @Test
     void highRiskMcpToolDeniedByDefaultPolicy() {
         var registry = new InMemoryToolRegistry();
         McpServerConfig config = McpServerConfig.builder()

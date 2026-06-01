@@ -21,6 +21,21 @@ public interface JsonRpcTransport extends AutoCloseable {
      */
     void notify(String method, JsonNode params) throws McpException;
 
+    /**
+     * 传输是否健康可用。默认 true（无持久连接的传输如 HTTP 恒为可用）。
+     * stdio 等持久子进程传输据此判断是否需要重连。
+     */
+    default boolean isHealthy() {
+        return true;
+    }
+
+    /**
+     * 重建底层连接（如重启 stdio 子进程）。默认 no-op。
+     * 重连后调用方需重新执行 MCP 握手（initialize）。
+     */
+    default void reconnect() throws McpException {
+    }
+
     @Override
     void close();
 }

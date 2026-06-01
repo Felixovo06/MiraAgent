@@ -45,5 +45,7 @@ public class McpProperties {
         private boolean enabled = true;
         private ToolRiskLevel toolRiskLevel = ToolRiskLevel.LOW;
         private String namePrefix;
+        /** stdio 读响应超时（毫秒），防 server 卡死导致线程永久阻塞。 */
+        private long requestTimeoutMillis = 30_000;
     }
 }

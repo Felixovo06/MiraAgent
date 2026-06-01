@@ -40,7 +40,8 @@ public class McpServerConnections {
 
     private McpClient buildClient(McpProperties.Server s, ObjectMapper objectMapper) {
         JsonRpcTransport transport = switch (s.getType()) {
-            case STDIO -> new StdioJsonRpcTransport(s.getId(), s.getCommand(), s.getArgs(), s.getEnv(), objectMapper);
+            case STDIO -> new StdioJsonRpcTransport(s.getId(), s.getCommand(), s.getArgs(), s.getEnv(),
+                    objectMapper, s.getRequestTimeoutMillis());
             case HTTP -> new HttpJsonRpcTransport(s.getId(), s.getUrl(), objectMapper);
         };
         McpServerConfig config = McpServerConfig.builder()

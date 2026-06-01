@@ -56,8 +56,7 @@ public class DefaultMcpClient implements McpClient {
 
     @Override
     public List<McpToolDescriptor> listTools() throws McpException {
-        ensureInitialized();
-        JsonNode result = transport.request("tools/list", objectMapper.createObjectNode());
+        JsonNode result = requestWithRecovery("tools/list", objectMapper.createObjectNode());
         List<McpToolDescriptor> tools = new ArrayList<>();
         JsonNode arr = result.path("tools");
         if (arr.isArray()) {
@@ -79,16 +78,40 @@ public class DefaultMcpClient implements McpClient {
 
     @Override
     public McpToolResult callTool(String name, JsonNode arguments) throws McpException {
-        ensureInitialized();
         ObjectNode params = objectMapper.createObjectNode();
         params.put("name", name);
         params.set("arguments", arguments == null || arguments.isNull()
                 ? objectMapper.createObjectNode() : arguments);
 
-        JsonNode result = transport.request("tools/call", params);
+        JsonNode result = requestWithRecovery("tools/call", params);
         boolean isError = result.path("isError").asBoolean(false);
         String text = extractText(result.path("content"));
         return McpToolResult.builder().text(text).isError(isError).build();
+    }
+
+    /**
+     * 发请求；失败时重连子进程 + 重新握手 + 重试一次。
+     * 让长期运行中 MCP server 进程死亡/卡死后能自愈，无需重启应用。
+     */
+    private JsonNode requestWithRecovery(String method, JsonNode params) {
+        try {
+            ensureInitialized();
+            return transport.request(method, params);
+        } catch (McpException e) {
+            log.warn("MCP request '{}' on '{}' failed ({}); reconnecting and retrying once",
+                    method, config.getId(), e.getMessage());
+            try {
+                transport.reconnect();
+                synchronized (this) {
+                    initialized = false;
+                }
+                initialize();
+                return transport.request(method, params);
+            } catch (McpException re) {
+                throw new McpException("MCP '" + config.getId()
+                        + "' request '" + method + "' failed after reconnect: " + re.getMessage(), re);
+            }
+        }
     }
 
     /** 拼接 content[] 中所有 type=text 的文本；其它类型用占位描述。 */

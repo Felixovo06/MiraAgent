@@ -18,10 +18,16 @@ class FakeJsonRpcTransport implements JsonRpcTransport {
     final List<String> notifiedMethods = new ArrayList<>();
     boolean closed = false;
     boolean failNextCall = false;
+    /** 为 true 时 tools/call 抛异常，直到 reconnect() 被调用，用于验证客户端自愈。 */
+    boolean breakConnection = false;
+    int reconnects = 0;
 
     @Override
     public JsonNode request(String method, JsonNode params) throws McpException {
         requestedMethods.add(method);
+        if (breakConnection && "tools/call".equals(method)) {
+            throw new McpException("connection broken");
+        }
         switch (method) {
             case "initialize" -> {
                 ObjectNode r = mapper.createObjectNode();
@@ -68,6 +74,17 @@ class FakeJsonRpcTransport implements JsonRpcTransport {
     @Override
     public void notify(String method, JsonNode params) {
         notifiedMethods.add(method);
+    }
+
+    @Override
+    public boolean isHealthy() {
+        return !closed && !breakConnection;
+    }
+
+    @Override
+    public void reconnect() {
+        reconnects++;
+        breakConnection = false;
     }
 
     @Override
