@@ -50,6 +50,12 @@
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>
+        <!-- 评测体系(黑盒、零依赖 core)。仅 EvalController 在 mira.eval.enabled 时装配触发用。 -->
+        <dependency>
+            <groupId>com.felix</groupId>
+            <artifactId>miraagent-eval</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <!-- 文档解析（读）：Tika 一把梭 PDF/Word/Excel/PPT/HTML/RTF/ODT 等转纯文本 -->
         <dependency>
             <groupId>org.apache.tika</groupId>

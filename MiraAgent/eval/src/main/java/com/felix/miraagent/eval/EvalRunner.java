@@ -36,7 +36,22 @@ public class EvalRunner {
         new EvalRunner().run(baseUrl, casesRes, out);
     }
 
+    /** CLI 路径:跑评测、写报告文件、打印 summary。 */
     public void run(String baseUrl, String casesRes, String out) throws Exception {
+        ObjectNode report = buildReport(baseUrl, casesRes, System.getProperty("eval.baseline"));
+        String json = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(report);
+        Files.writeString(Path.of(out), json);
+        System.out.println("\n===== 评测报告 summary =====");
+        System.out.println(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(report.get("summary")));
+        if (report.has("diff")) {
+            System.out.println("\n----- 与 baseline 对比 -----");
+            System.out.println(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(report.get("diff")));
+        }
+        System.out.println("报告已写入: " + Path.of(out).toAbsolutePath());
+    }
+
+    /** 核心:跑评测并返回完整报告 ObjectNode(供 CLI 与 REST 复用)。baselinePath 可为 null。 */
+    public ObjectNode buildReport(String baseUrl, String casesRes, String baselinePath) throws Exception {
         List<EvalCase> cases = loadCases(casesRes);
         AgentEvalClient client = new AgentEvalClient(baseUrl);
         LlmJudge judge = LlmJudge.fromConfig();
@@ -192,8 +207,7 @@ public class EvalRunner {
         report.put("baseUrl", baseUrl);
         report.set("summary", summary);
 
-        // Layer 4：与 baseline 对比（-Deval.baseline=旧报告路径，-Deval.tolerance=容差，默认 0.05）
-        String baselinePath = System.getProperty("eval.baseline");
+        // Layer 4：与 baseline 对比（容差 -Deval.tolerance，默认 0.05）
         if (baselinePath != null && Files.exists(Path.of(baselinePath))) {
             double tol = Double.parseDouble(System.getProperty("eval.tolerance", "0.05"));
             JsonNode baseSummary = mapper.readTree(Files.readString(Path.of(baselinePath))).path("summary");
@@ -201,17 +215,7 @@ public class EvalRunner {
             report.set("diff", diff);
         }
         report.set("cases", caseReports);
-
-        String json = mapper.writerWithDefaultPrettyPrinter().writeValueAsString(report);
-        Files.writeString(Path.of(out), json);
-
-        System.out.println("\n===== 评测报告 summary =====");
-        System.out.println(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(summary));
-        if (report.has("diff")) {
-            System.out.println("\n----- 与 baseline 对比 -----");
-            System.out.println(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(report.get("diff")));
-        }
-        System.out.println("报告已写入: " + Path.of(out).toAbsolutePath());
+        return report;
     }
 
     private void putIf(ObjectNode node, String field, Integer v, List<Integer> acc) {
