@@ -146,11 +146,20 @@ public class ConversationLoop {
                         .permissionPolicy(request.getPermissionPolicy())
                         .build();
 
+                for (ToolCall tc : response.getToolCalls()) {
+                    record(runId, sessionId, stepIndex++, TraceEventType.TOOL_EXECUTION_STARTED,
+                            Map.of("tool", tc.getName(), "callId", tc.getId()));
+                }
+
                 List<ToolExecutionResult> results = toolDispatcher.dispatchAll(response.getToolCalls(), dispatchCtx);
                 toolCallCount += results.size();
                 allToolResults.addAll(results);
 
                 for (ToolExecutionResult result : results) {
+                    if (result.getStatus() == com.felix.miraagent.tools.ToolStatus.DENIED) {
+                        record(runId, sessionId, stepIndex++, TraceEventType.PERMISSION_DENIED,
+                                Map.of("tool", result.getToolName(), "callId", result.getToolCallId()));
+                    }
                     record(runId, sessionId, stepIndex++, TraceEventType.TOOL_EXECUTION_FINISHED,
                             Map.of("tool", result.getToolName(), "status", result.getStatus().name()));
 
