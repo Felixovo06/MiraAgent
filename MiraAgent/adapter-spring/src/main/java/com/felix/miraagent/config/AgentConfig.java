@@ -11,9 +11,11 @@ import com.felix.miraagent.prompt.impl.DefaultPromptBuilder;
 import com.felix.miraagent.session.SessionStore;
 import com.felix.miraagent.session.impl.InMemorySessionStore;
 import com.felix.miraagent.tools.ToolDispatcher;
+import com.felix.miraagent.tools.ToolExecutionStore;
 import com.felix.miraagent.tools.ToolRegistry;
 import com.felix.miraagent.tools.builtin.BuiltinTools;
 import com.felix.miraagent.tools.impl.DefaultToolDispatcher;
+import com.felix.miraagent.tools.impl.InMemoryToolExecutionStore;
 import com.felix.miraagent.tools.impl.InMemoryToolRegistry;
 import com.felix.miraagent.trace.TraceStore;
 import com.felix.miraagent.trace.impl.InMemoryTraceStore;
@@ -34,6 +36,12 @@ public class AgentConfig {
     @ConditionalOnMissingBean(TraceStore.class)
     public TraceStore inMemoryTraceStore() {
         return new InMemoryTraceStore();
+    }
+
+    @Bean
+    @ConditionalOnMissingBean(ToolExecutionStore.class)
+    public ToolExecutionStore inMemoryToolExecutionStore() {
+        return new InMemoryToolExecutionStore();
     }
 
     @Bean
@@ -59,9 +67,10 @@ public class AgentConfig {
     @Bean
     public ConversationLoop conversationLoop(ModelClient modelClient, PromptBuilder promptBuilder,
                                              ToolRegistry toolRegistry, ToolDispatcher toolDispatcher,
-                                             SessionStore sessionStore, TraceStore traceStore) {
+                                             SessionStore sessionStore, TraceStore traceStore,
+                                             ToolExecutionStore toolExecutionStore) {
         return new ConversationLoop(modelClient, promptBuilder, toolRegistry, toolDispatcher,
-                sessionStore, traceStore);
+                sessionStore, traceStore, toolExecutionStore);
     }
 
     @Bean

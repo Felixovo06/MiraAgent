@@ -5,6 +5,7 @@ import com.felix.miraagent.character.CharacterProfile;
 import com.felix.miraagent.fake.FakeModelClient;
 import com.felix.miraagent.model.Message;
 import com.felix.miraagent.model.MessageRole;
+import com.felix.miraagent.model.StreamDelta;
 import com.felix.miraagent.model.ToolCall;
 import com.felix.miraagent.prompt.impl.DefaultPromptBuilder;
 import com.felix.miraagent.session.impl.InMemorySessionStore;
@@ -12,6 +13,7 @@ import com.felix.miraagent.tools.ToolStatus;
 import com.felix.miraagent.tools.builtin.BuiltinTools;
 import com.felix.miraagent.tools.impl.DefaultToolDispatcher;
 import com.felix.miraagent.tools.impl.DefaultToolPermissionPolicy;
+import com.felix.miraagent.tools.impl.InMemoryToolExecutionStore;
 import com.felix.miraagent.tools.impl.InMemoryToolRegistry;
 import com.felix.miraagent.trace.TraceEventType;
 import com.felix.miraagent.trace.impl.InMemoryTraceStore;
@@ -20,6 +22,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -28,6 +31,7 @@ class ConversationLoopTest {
     private FakeModelClient fakeModel;
     private InMemorySessionStore sessionStore;
     private InMemoryTraceStore traceStore;
+    private InMemoryToolExecutionStore toolExecutionStore;
     private InMemoryToolRegistry toolRegistry;
     private ConversationLoop loop;
 
@@ -36,6 +40,7 @@ class ConversationLoopTest {
         fakeModel = new FakeModelClient();
         sessionStore = new InMemorySessionStore();
         traceStore = new InMemoryTraceStore();
+        toolExecutionStore = new InMemoryToolExecutionStore();
         toolRegistry = new InMemoryToolRegistry();
         BuiltinTools.registerAll(toolRegistry);
 
@@ -45,7 +50,8 @@ class ConversationLoopTest {
                 toolRegistry,
                 new DefaultToolDispatcher(toolRegistry),
                 sessionStore,
-                traceStore
+                traceStore,
+                toolExecutionStore
         );
     }
 
@@ -91,6 +97,7 @@ class ConversationLoopTest {
         assertEquals(1, result.getToolExecutions().size());
         assertEquals(ToolStatus.SUCCESS, result.getToolExecutions().get(0).getStatus());
         assertEquals("I saved that note for you.", result.getFinalMessage().getContent());
+        assertEquals(1, toolExecutionStore.findByRunId(request.getRunId()).size());
     }
 
     @Test
@@ -172,5 +179,33 @@ class ConversationLoopTest {
 
         var messages = sessionStore.loadMessages(session);
         assertTrue(messages.stream().anyMatch(m -> m.getRole() == MessageRole.ASSISTANT));
+    }
+
+    @Test
+    void shouldEmitStreamingDeltasTraceAndToolResults() {
+        fakeModel.thenCallTool("tc1", "note", "{\"content\":\"stream note\"}")
+                .thenReply("Done streaming.");
+
+        var deltas = new CopyOnWriteArrayList<StreamDelta>();
+        var request = AgentRunRequest.builder()
+                .runId(UUID.randomUUID().toString())
+                .userId("u1")
+                .sessionId("s8")
+                .characterProfile(CharacterProfile.defaultProfile())
+                .message(userMessage("stream please"))
+                .modelConfig(ModelConfig.builder().modelName("fake").build())
+                .iterationBudget(IterationBudget.defaultBudget())
+                .permissionPolicy(new DefaultToolPermissionPolicy())
+                .streamCallback(deltas::add)
+                .build();
+
+        var result = loop.run(request);
+
+        assertEquals(RunStatus.SUCCESS, result.getStatus());
+        assertTrue(deltas.stream().anyMatch(d -> d.getTextDelta() != null && d.getTextDelta().contains("Done streaming.")));
+        assertTrue(deltas.stream().anyMatch(d -> d.getToolCallDelta() != null && d.getToolCallDelta().getName().equals("note")));
+        assertTrue(deltas.stream().anyMatch(d -> d.getToolExecutionResult() != null));
+        assertTrue(deltas.stream().anyMatch(d -> d.getTraceEvent() != null));
+        assertTrue(deltas.stream().anyMatch(StreamDelta::isDone));
     }
 }

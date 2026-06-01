@@ -1,5 +1,6 @@
 package com.felix.miraagent.persistence.jdbc;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.felix.miraagent.trace.TraceEvent;
 import com.felix.miraagent.trace.TraceEventType;
@@ -35,7 +36,7 @@ public class JdbcTraceStore implements TraceStore {
         }
         jdbc.update("""
                 insert into agent_traces (id, run_id, session_id, step_index, event_type, payload, created_at)
-                values (?, ?, ?, ?, ?, ?::jsonb, now())
+                values (?, ?, ?, ?, ?, cast(? as jsonb), now())
                 """,
                 event.getId(), event.getRunId(), event.getSessionId(),
                 event.getStepIndex(), event.getEventType().name(),
@@ -62,7 +63,7 @@ public class JdbcTraceStore implements TraceStore {
             String payloadJson = rs.getString("payload");
             if (payloadJson != null) {
                 try {
-                    payload = objectMapper.readValue(payloadJson, Map.class);
+                    payload = objectMapper.readValue(payloadJson, new TypeReference<>() {});
                 } catch (Exception e) {
                     log.warn("Failed to deserialize trace payload for event {}", rs.getString("id"), e);
                 }

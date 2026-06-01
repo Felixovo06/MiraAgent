@@ -142,6 +142,7 @@ public class WeixinPoller implements DisposableBean {
 
         String text = item.getTextItem().getText();
         String sessionId = userSessionMapper.getOrCreateSession(msg.getFromUserId());
+        log.info("[Weixin] Received text from {}: {}", msg.getFromUserId(), text);
 
         ChatInput input = ChatInput.builder()
                 .userId(msg.getFromUserId())
@@ -176,6 +177,7 @@ public class WeixinPoller implements DisposableBean {
         SendMessageRequest request = new SendMessageRequest(sendMsg, BaseInfo.defaults());
         try {
             iLinkClient.sendMessage(runtimeConfig.getBaseUrl(), runtimeConfig.getBotToken(), request);
+            log.info("[Weixin] Reply sent to {}", toUserId);
         } catch (Exception e) {
             log.error("[Weixin] Failed to send reply to {}: {}", toUserId, e.getMessage(), e);
         }

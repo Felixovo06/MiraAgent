@@ -18,7 +18,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentCaptor.forClass;
 import static org.mockito.Mockito.when;
+import static org.hamcrest.Matchers.containsString;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -73,6 +75,9 @@ class ChatControllerTest {
                         .content(objectMapper.writeValueAsString(req)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content").value("Hello!"))
+                .andExpect(jsonPath("$.finalMessage.role").value("assistant"))
+                .andExpect(jsonPath("$.finalMessage.content").value("Hello!"))
+                .andExpect(jsonPath("$.traceId").value(runId))
                 .andExpect(jsonPath("$.status").value("SUCCESS"))
                 .andExpect(jsonPath("$.runId").value(runId));
     }
@@ -82,5 +87,51 @@ class ChatControllerTest {
         mockMvc.perform(post("/api/runs/some-run-id/interrupt"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.message").value("interrupt signal sent"));
+    }
+
+    @Test
+    void stream_usesStableRunIdAndSendsSseEvents() throws Exception {
+        Message finalMsg = Message.builder()
+                .id(UUID.randomUUID().toString())
+                .role(MessageRole.ASSISTANT)
+                .content("Hello stream!")
+                .build();
+
+        var captor = forClass(com.felix.miraagent.agent.ChatInput.class);
+        when(agentRuntime.chat(captor.capture())).thenAnswer(invocation -> {
+            var input = captor.getValue();
+            input.getStreamCallback().onDelta(com.felix.miraagent.model.StreamDelta.builder()
+                    .textDelta("Hello ")
+                    .build());
+            input.getStreamCallback().onDelta(com.felix.miraagent.model.StreamDelta.builder()
+                    .textDelta("stream!")
+                    .build());
+            return RunResult.builder()
+                    .runId(input.getRunId())
+                    .sessionId(input.getSessionId())
+                    .status(RunStatus.SUCCESS)
+                    .finalMessage(finalMsg)
+                    .build();
+        });
+
+        ChatApiRequest req = new ChatApiRequest();
+        req.setUserId("user-1");
+        req.setSessionId("session-stream");
+        req.setContent("Hi");
+        req.setStream(true);
+
+        var mvcResult = mockMvc.perform(post("/api/chat/stream")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(mvcResult))
+                .andExpect(status().isOk())
+                .andExpect(content().string(containsString("event:start")))
+                .andExpect(content().string(containsString("event:text_delta")))
+                .andExpect(content().string(containsString("Hello ")))
+                .andExpect(content().string(containsString("stream!")))
+                .andExpect(content().string(containsString("event:done")));
     }
 }

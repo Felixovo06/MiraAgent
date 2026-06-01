@@ -72,6 +72,7 @@ public class FakeModelClient implements ModelClient {
         return new StreamHandle() {
             public void abort() {}
             public boolean isComplete() { return true; }
+            public ChatResponse await() { return response; }
         };
     }
 

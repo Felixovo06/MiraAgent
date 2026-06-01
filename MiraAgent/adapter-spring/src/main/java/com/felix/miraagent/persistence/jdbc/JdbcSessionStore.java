@@ -62,7 +62,7 @@ public class JdbcSessionStore implements SessionStore {
         }
         jdbc.update("""
                 insert into messages (id, session_id, role, content, tool_call_id, tool_name, tool_calls, created_at)
-                values (?, ?, ?, ?, ?, ?, ?::jsonb, now())
+                values (?, ?, ?, ?, ?, ?, cast(? as jsonb), now())
                 """,
                 message.getId() != null ? message.getId() : UUID.randomUUID().toString(),
                 sessionId,

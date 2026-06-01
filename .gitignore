@@ -1,3 +1,16 @@
 .DS_Store
 node_modules/
 .codegraph/
+
+# Java / Maven
+target/
+*.class
+*.log
+
+# IDE / editor
+.idea/
+*.iml
+.vscode/
+
+# OS metadata
+Thumbs.db

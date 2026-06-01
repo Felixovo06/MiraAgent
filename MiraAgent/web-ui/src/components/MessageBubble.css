@@ -45,6 +45,16 @@
   word-break: break-word;
 }
 
+.bubble-stream-cursor {
+  display: inline-block;
+  width: 7px;
+  height: 1.1em;
+  margin-left: 2px;
+  vertical-align: -0.18em;
+  background: var(--accent);
+  animation: blink 0.9s steps(2, start) infinite;
+}
+
 .bubble-thinking {
   display: flex;
   gap: 4px;
@@ -71,4 +81,8 @@
 @keyframes pulse {
   0%, 80%, 100% { opacity: 0.3; transform: scale(0.8); }
   40% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes blink {
+  to { opacity: 0; }
 }

@@ -10,11 +10,20 @@ import java.util.List;
 public class ChatApiResponse {
     String runId;
     String sessionId;
+    String traceId;
+    FinalMessageDto finalMessage;
     String content;
     String status;
     List<ToolExecutionDto> toolExecutions;
     UsageDto usage;
     String error;
+
+    @Value
+    @Builder
+    public static class FinalMessageDto {
+        String role;
+        String content;
+    }
 
     @Value
     @Builder

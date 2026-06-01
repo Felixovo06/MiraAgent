@@ -48,7 +48,7 @@ public class DefaultAgentRuntime implements AgentRuntime {
         List<Message> messages = new java.util.ArrayList<>(history);
         messages.add(userMessage);
 
-        String runId = UUID.randomUUID().toString();
+        String runId = input.getRunId() != null ? input.getRunId() : UUID.randomUUID().toString();
         var signal = new InterruptSignal();
         activeRuns.put(runId, signal);
 
@@ -64,7 +64,7 @@ public class DefaultAgentRuntime implements AgentRuntime {
                 .iterationBudget(IterationBudget.defaultBudget())
                 .permissionPolicy(new DefaultToolPermissionPolicy())
                 .interruptSignal(signal)
-                .streamCallback(input.isStream() ? null : null)
+                .streamCallback(input.getStreamCallback())
                 .build();
 
         try {

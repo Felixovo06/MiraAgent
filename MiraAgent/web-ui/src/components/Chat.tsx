@@ -59,19 +59,38 @@ export function Chat({ onRunComplete }: Props) {
 
     const abort = streamChat(
       { userId: 'user-1', sessionId: sessionId.current, content },
-      (response: ChatResponse) => {
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === pendingId
-              ? { ...m, content: response.content ?? '', pending: false }
-              : m,
-          ),
-        )
-        setToolExecutions(response.toolExecutions ?? [])
-        setActiveRunId(response.runId)
-        onRunComplete(response.runId)
-        setRunning(false)
-        abortRef.current = null
+      (event) => {
+        if (event.type === 'start') {
+          setActiveRunId(event.runId)
+          onRunComplete(event.runId)
+        } else if (event.type === 'text_delta') {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === pendingId
+                ? { ...m, content: `${m.content}${event.text}` }
+                : m,
+            ),
+          )
+        } else if (event.type === 'tool_result') {
+          setToolExecutions((prev) => [...prev, event.toolResult])
+        } else if (event.type === 'done') {
+          const response: ChatResponse = event.response
+          const finalContent = response.finalMessage?.content ?? response.content ?? ''
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === pendingId
+                ? { ...m, content: m.content || finalContent, pending: false }
+                : m,
+            ),
+          )
+          if (response.toolExecutions?.length) {
+            setToolExecutions(response.toolExecutions)
+          }
+          setActiveRunId(response.runId)
+          onRunComplete(response.runId)
+          setRunning(false)
+          abortRef.current = null
+        }
       },
       (err: string) => {
         setMessages((prev) =>

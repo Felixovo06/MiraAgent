@@ -79,10 +79,17 @@ public class QrLoginService implements ApplicationRunner {
 
     // Returns the terminal status: "confirmed", "expired", or "error"
     private String pollQrStatus(String baseUrl, String qrcode) throws InterruptedException {
+        String currentBaseUrl = baseUrl;
         while (true) {
             Thread.sleep(POLL_INTERVAL_MS);
 
-            QrStatusResponse resp = iLinkClient.getQrStatus(baseUrl, qrcode);
+            QrStatusResponse resp;
+            try {
+                resp = iLinkClient.getQrStatus(currentBaseUrl, qrcode);
+            } catch (RuntimeException e) {
+                log.warn("[Weixin] QR status polling failed, retrying: {}", e.getMessage());
+                continue;
+            }
             if (resp.isError()) {
                 log.error("[Weixin] getQrStatus error: ret={}", resp.getRet());
                 return "error";
@@ -98,7 +105,7 @@ public class QrLoginService implements ApplicationRunner {
                     if (resp.getBaseUrl() != null && !resp.getBaseUrl().isBlank()) {
                         log.info("[Weixin] Redirecting to {}", resp.getBaseUrl());
                         runtimeConfig.setBaseUrl(resp.getBaseUrl());
-                        // Re-poll at new base_url with same qrcode
+                        currentBaseUrl = resp.getBaseUrl();
                     }
                 }
                 case "confirmed" -> {

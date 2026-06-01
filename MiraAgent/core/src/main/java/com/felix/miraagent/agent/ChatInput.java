@@ -1,5 +1,6 @@
 package com.felix.miraagent.agent;
 
+import com.felix.miraagent.model.StreamCallback;
 import lombok.Builder;
 import lombok.Singular;
 import lombok.Value;
@@ -10,6 +11,7 @@ import java.util.Map;
 @Value
 @Builder
 public class ChatInput {
+    String runId;
     String userId;
     String sessionId;
     String characterId;
@@ -19,5 +21,6 @@ public class ChatInput {
     String model;
     @Builder.Default
     boolean stream = false;
+    StreamCallback streamCallback;
     Map<String, Object> metadata;
 }

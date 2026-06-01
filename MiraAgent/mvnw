@@ -41,6 +41,26 @@ CYGWIN* | MINGW*)
   ;;
 esac
 
+# MiraAgent targets JDK 21 and uses Java 21 APIs such as virtual threads.
+# Respect an explicit JAVA_HOME; otherwise prefer a local JDK 21 when present.
+if [ -z "${JAVA_HOME-}" ]; then
+  if [ -x /opt/homebrew/opt/openjdk@21/bin/java ]; then
+    JAVA_HOME=/opt/homebrew/opt/openjdk@21
+  elif [ -x /usr/local/opt/openjdk@21/bin/java ]; then
+    JAVA_HOME=/usr/local/opt/openjdk@21
+  elif command -v /usr/libexec/java_home >/dev/null 2>&1; then
+    detectedJavaHome="$(/usr/libexec/java_home -v 21 2>/dev/null || :)"
+    if [ -n "$detectedJavaHome" ]; then
+      JAVA_HOME="$detectedJavaHome"
+    fi
+  fi
+  if [ -n "${JAVA_HOME-}" ]; then
+    export JAVA_HOME
+    PATH="$JAVA_HOME/bin:$PATH"
+    export PATH
+  fi
+fi
+
 # set JAVACMD and JAVACCMD
 set_java_home() {
   # For Cygwin and MinGW, ensure paths are in Unix format before anything is touched

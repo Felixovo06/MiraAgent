@@ -9,6 +9,7 @@ import com.felix.miraagent.session.SessionStore;
 import com.felix.miraagent.tools.ToolDispatchContext;
 import com.felix.miraagent.tools.ToolDispatcher;
 import com.felix.miraagent.tools.ToolExecutionResult;
+import com.felix.miraagent.tools.ToolExecutionStore;
 import com.felix.miraagent.tools.ToolRegistry;
 import com.felix.miraagent.tools.ToolResolveContext;
 import com.felix.miraagent.trace.TraceEvent;
@@ -29,16 +30,19 @@ public class ConversationLoop {
     private final ToolDispatcher toolDispatcher;
     private final SessionStore sessionStore;
     private final TraceStore traceStore;
+    private final ToolExecutionStore toolExecutionStore;
 
     public ConversationLoop(ModelClient modelClient, PromptBuilder promptBuilder,
                             ToolRegistry toolRegistry, ToolDispatcher toolDispatcher,
-                            SessionStore sessionStore, TraceStore traceStore) {
+                            SessionStore sessionStore, TraceStore traceStore,
+                            ToolExecutionStore toolExecutionStore) {
         this.modelClient = modelClient;
         this.promptBuilder = promptBuilder;
         this.toolRegistry = toolRegistry;
         this.toolDispatcher = toolDispatcher;
         this.sessionStore = sessionStore;
         this.traceStore = traceStore;
+        this.toolExecutionStore = toolExecutionStore;
     }
 
     public RunResult run(AgentRunRequest request) {
@@ -46,7 +50,7 @@ public class ConversationLoop {
         String sessionId = request.getSessionId();
         IterationBudget budget = request.getIterationBudget();
 
-        record(runId, sessionId, 0, TraceEventType.RUN_STARTED, Map.of("userId", request.getUserId()));
+        emitTrace(request, runId, sessionId, 0, TraceEventType.RUN_STARTED, Map.of("userId", request.getUserId()));
 
         List<Message> conversationHistory = new ArrayList<>(request.getMessages());
         List<ToolExecutionResult> allToolResults = new ArrayList<>();
@@ -56,13 +60,15 @@ public class ConversationLoop {
 
         while (true) {
             if (request.getInterruptSignal().isInterrupted()) {
-                record(runId, sessionId, stepIndex++, TraceEventType.RUN_FAILED, Map.of("reason", "interrupted"));
+                emitTrace(request, runId, sessionId, stepIndex++, TraceEventType.RUN_FAILED, Map.of("reason", "interrupted"));
+                streamDone(request, "interrupted");
                 return RunResult.builder().runId(runId).sessionId(sessionId)
                         .status(RunStatus.INTERRUPTED).toolExecutions(allToolResults).build();
             }
 
             if (modelCallCount >= budget.getMaxModelCalls()) {
-                record(runId, sessionId, stepIndex++, TraceEventType.RUN_FAILED, Map.of("reason", "budget_exceeded_model_calls"));
+                emitTrace(request, runId, sessionId, stepIndex++, TraceEventType.RUN_FAILED, Map.of("reason", "budget_exceeded_model_calls"));
+                streamDone(request, "budget_exceeded");
                 return RunResult.builder().runId(runId).sessionId(sessionId)
                         .status(RunStatus.BUDGET_EXCEEDED).error("Max model calls exceeded: " + budget.getMaxModelCalls())
                         .toolExecutions(allToolResults).build();
@@ -82,7 +88,7 @@ public class ConversationLoop {
                     .build();
 
             PromptBuildResult promptResult = promptBuilder.build(promptRequest);
-            record(runId, sessionId, stepIndex++, TraceEventType.PROMPT_BUILT,
+            emitTrace(request, runId, sessionId, stepIndex++, TraceEventType.PROMPT_BUILT,
                     Map.of("tokenEstimate", promptResult.getTokenEstimate()));
 
             var chatRequest = ChatRequest.builder()
@@ -93,25 +99,36 @@ public class ConversationLoop {
                     .stream(request.getStreamCallback() != null)
                     .build();
 
-            record(runId, sessionId, stepIndex++, TraceEventType.MODEL_REQUESTED,
+            emitTrace(request, runId, sessionId, stepIndex++, TraceEventType.MODEL_REQUESTED,
                     Map.of("modelCallCount", modelCallCount));
 
             ChatResponse response;
             try {
-                response = modelClient.chat(chatRequest);
+                if (request.getStreamCallback() != null) {
+                    response = streamModel(request, chatRequest);
+                } else {
+                    response = modelClient.chat(chatRequest);
+                }
                 modelCallCount++;
+            } catch (RunInterruptedException e) {
+                emitTrace(request, runId, sessionId, stepIndex++, TraceEventType.RUN_FAILED, Map.of("reason", "interrupted"));
+                streamDone(request, "interrupted");
+                return RunResult.builder().runId(runId).sessionId(sessionId)
+                        .status(RunStatus.INTERRUPTED).toolExecutions(allToolResults).build();
             } catch (Exception e) {
                 log.error("Model call failed runId={}", runId, e);
-                record(runId, sessionId, stepIndex++, TraceEventType.RUN_FAILED, Map.of("error", e.getMessage()));
+                streamError(request, e.getMessage());
+                emitTrace(request, runId, sessionId, stepIndex++, TraceEventType.RUN_FAILED, Map.of("error", e.getMessage()));
                 return RunResult.builder().runId(runId).sessionId(sessionId)
                         .status(RunStatus.FAILED).error(e.getMessage()).toolExecutions(allToolResults).build();
             }
 
-            record(runId, sessionId, stepIndex++, TraceEventType.MODEL_RESPONDED,
+            emitTrace(request, runId, sessionId, stepIndex++, TraceEventType.MODEL_RESPONDED,
                     Map.of("finishReason", String.valueOf(response.getFinishReason())));
 
             if (response.hasError()) {
-                record(runId, sessionId, stepIndex++, TraceEventType.RUN_FAILED,
+                streamError(request, response.getError().getMessage());
+                emitTrace(request, runId, sessionId, stepIndex++, TraceEventType.RUN_FAILED,
                         Map.of("error", response.getError().getMessage()));
                 return RunResult.builder().runId(runId).sessionId(sessionId)
                         .status(RunStatus.FAILED).error(response.getError().getMessage())
@@ -119,8 +136,9 @@ public class ConversationLoop {
             }
 
             if (response.hasToolCalls()) {
-                record(runId, sessionId, stepIndex++, TraceEventType.TOOL_CALL_RECEIVED,
+                emitTrace(request, runId, sessionId, stepIndex++, TraceEventType.TOOL_CALL_RECEIVED,
                         Map.of("count", response.getToolCalls().size()));
+                emitToolCalls(request, response.getToolCalls());
 
                 Message assistantMsg = response.getAssistantMessage() != null
                         ? response.getAssistantMessage()
@@ -134,8 +152,9 @@ public class ConversationLoop {
                 conversationHistory.add(assistantMsg);
 
                 if (toolCallCount + response.getToolCalls().size() > budget.getMaxToolCalls()) {
-                    record(runId, sessionId, stepIndex++, TraceEventType.RUN_FAILED,
+                    emitTrace(request, runId, sessionId, stepIndex++, TraceEventType.RUN_FAILED,
                             Map.of("reason", "budget_exceeded_tool_calls"));
+                    streamDone(request, "budget_exceeded");
                     return RunResult.builder().runId(runId).sessionId(sessionId)
                             .status(RunStatus.BUDGET_EXCEEDED).error("Max tool calls exceeded")
                             .toolExecutions(allToolResults).build();
@@ -147,7 +166,7 @@ public class ConversationLoop {
                         .build();
 
                 for (ToolCall tc : response.getToolCalls()) {
-                    record(runId, sessionId, stepIndex++, TraceEventType.TOOL_EXECUTION_STARTED,
+                    emitTrace(request, runId, sessionId, stepIndex++, TraceEventType.TOOL_EXECUTION_STARTED,
                             Map.of("tool", tc.getName(), "callId", tc.getId()));
                 }
 
@@ -155,13 +174,17 @@ public class ConversationLoop {
                 toolCallCount += results.size();
                 allToolResults.addAll(results);
 
-                for (ToolExecutionResult result : results) {
+                for (int i = 0; i < results.size(); i++) {
+                    ToolExecutionResult result = results.get(i);
+                    ToolCall call = response.getToolCalls().get(i);
+                    toolExecutionStore.record(runId, sessionId, call, result);
                     if (result.getStatus() == com.felix.miraagent.tools.ToolStatus.DENIED) {
-                        record(runId, sessionId, stepIndex++, TraceEventType.PERMISSION_DENIED,
+                        emitTrace(request, runId, sessionId, stepIndex++, TraceEventType.PERMISSION_DENIED,
                                 Map.of("tool", result.getToolName(), "callId", result.getToolCallId()));
                     }
-                    record(runId, sessionId, stepIndex++, TraceEventType.TOOL_EXECUTION_FINISHED,
+                    emitTrace(request, runId, sessionId, stepIndex++, TraceEventType.TOOL_EXECUTION_FINISHED,
                             Map.of("tool", result.getToolName(), "status", result.getStatus().name()));
+                    emitToolResult(request, result);
 
                     Message toolMsg = Message.builder()
                             .id(UUID.randomUUID().toString())
@@ -188,9 +211,10 @@ public class ConversationLoop {
             sessionStore.appendMessage(sessionId, finalMsg);
             sessionStore.updateLastMessageAt(sessionId);
 
-            record(runId, sessionId, stepIndex++, TraceEventType.FINAL_RESPONSE,
+            emitTrace(request, runId, sessionId, stepIndex++, TraceEventType.FINAL_RESPONSE,
                     Map.of("contentLength", finalMsg.getContent() != null ? finalMsg.getContent().length() : 0));
-            record(runId, sessionId, stepIndex++, TraceEventType.SESSION_PERSISTED, Map.of());
+            emitTrace(request, runId, sessionId, stepIndex++, TraceEventType.SESSION_PERSISTED, Map.of());
+            streamDone(request, response.getFinishReason());
 
             return RunResult.builder()
                     .runId(runId).sessionId(sessionId)
@@ -201,12 +225,83 @@ public class ConversationLoop {
         }
     }
 
-    private void record(String runId, String sessionId, int stepIndex, TraceEventType type, Map<String, Object> payload) {
-        traceStore.record(TraceEvent.builder()
+    private void emitTrace(AgentRunRequest request, String runId, String sessionId, int stepIndex,
+                           TraceEventType type, Map<String, Object> payload) {
+        TraceEvent event = TraceEvent.builder()
                 .id(UUID.randomUUID().toString())
                 .runId(runId).sessionId(sessionId)
                 .stepIndex(stepIndex).eventType(type)
                 .payload(payload)
-                .build());
+                .build();
+        traceStore.record(event);
+        if (request.getStreamCallback() != null) {
+            request.getStreamCallback().onDelta(StreamDelta.builder().traceEvent(event).build());
+        }
+    }
+
+    private void emitToolCalls(AgentRunRequest request, List<ToolCall> toolCalls) {
+        if (request.getStreamCallback() == null) {
+            return;
+        }
+        for (int i = 0; i < toolCalls.size(); i++) {
+            request.getStreamCallback().onDelta(StreamDelta.builder()
+                    .toolCallDelta(toolCalls.get(i))
+                    .toolCallIndex(i)
+                    .build());
+        }
+    }
+
+    private void emitToolResult(AgentRunRequest request, ToolExecutionResult result) {
+        if (request.getStreamCallback() != null) {
+            request.getStreamCallback().onDelta(StreamDelta.builder()
+                    .toolExecutionResult(result)
+                    .build());
+        }
+    }
+
+    private void streamError(AgentRunRequest request, String message) {
+        if (request.getStreamCallback() != null) {
+            request.getStreamCallback().onDelta(StreamDelta.builder()
+                    .error(message)
+                    .done(true)
+                    .finishReason("error")
+                    .build());
+        }
+    }
+
+    private void streamDone(AgentRunRequest request, String finishReason) {
+        if (request.getStreamCallback() != null) {
+            request.getStreamCallback().onDelta(StreamDelta.builder()
+                    .done(true)
+                    .finishReason(finishReason != null ? finishReason : "stop")
+                    .build());
+        }
+    }
+
+    private ChatResponse streamModel(AgentRunRequest request, ChatRequest chatRequest) {
+        StreamCallback callback = delta -> {
+            if (request.getInterruptSignal().isInterrupted()) {
+                throw new RunInterruptedException();
+            }
+            request.getStreamCallback().onDelta(delta);
+        };
+        var handle = modelClient.streamChat(chatRequest, callback);
+        while (!handle.isComplete()) {
+            if (request.getInterruptSignal().isInterrupted()) {
+                handle.abort();
+                throw new RunInterruptedException();
+            }
+            try {
+                Thread.sleep(25L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                handle.abort();
+                throw new RunInterruptedException();
+            }
+        }
+        return handle.await();
+    }
+
+    private static class RunInterruptedException extends RuntimeException {
     }
 }

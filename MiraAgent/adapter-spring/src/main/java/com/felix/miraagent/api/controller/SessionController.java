@@ -1,7 +1,7 @@
 package com.felix.miraagent.api.controller;
 
 import com.felix.miraagent.api.dto.MessageDto;
-import com.felix.miraagent.session.SessionStore;
+import com.felix.miraagent.api.service.SessionApiService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -11,18 +11,14 @@ import java.util.List;
 @RequestMapping("/api/sessions")
 public class SessionController {
 
-    private final SessionStore sessionStore;
+    private final SessionApiService sessionApiService;
 
-    public SessionController(SessionStore sessionStore) {
-        this.sessionStore = sessionStore;
+    public SessionController(SessionApiService sessionApiService) {
+        this.sessionApiService = sessionApiService;
     }
 
     @GetMapping("/{sessionId}/messages")
     public ResponseEntity<List<MessageDto>> getMessages(@PathVariable String sessionId) {
-        List<MessageDto> messages = sessionStore.loadMessages(sessionId)
-                .stream()
-                .map(MessageDto::from)
-                .toList();
-        return ResponseEntity.ok(messages);
+        return ResponseEntity.ok(sessionApiService.getMessages(sessionId));
     }
 }

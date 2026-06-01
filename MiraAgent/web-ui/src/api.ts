@@ -1,4 +1,4 @@
-import type { ChatResponse, Message, TraceEvent } from './types'
+import type { ChatResponse, Message, StreamEvent, ToolCall, ToolExecution, TraceEvent } from './types'
 
 const BASE = '/api'
 
@@ -25,7 +25,7 @@ export function streamChat(
     content: string
     enabledTools?: string[]
   },
-  onDone: (response: ChatResponse) => void,
+  onEvent: (event: StreamEvent) => void,
   onError: (err: string) => void,
 ): () => void {
   const ctrl = new AbortController()
@@ -59,11 +59,7 @@ export function streamChat(
             eventName = line.slice(6).trim()
           } else if (line.startsWith('data:')) {
             const data = line.slice(5).trim()
-            if (eventName === 'done') {
-              onDone(JSON.parse(data))
-            } else if (eventName === 'error') {
-              onError(JSON.parse(data).message ?? 'Stream error')
-            }
+            handleStreamData(eventName, data, onEvent, onError)
           }
         }
       }
@@ -73,6 +69,32 @@ export function streamChat(
     })
 
   return () => ctrl.abort()
+}
+
+function handleStreamData(
+  eventName: string,
+  data: string,
+  onEvent: (event: StreamEvent) => void,
+  onError: (err: string) => void,
+) {
+  if (eventName === 'start') {
+    const parsed = JSON.parse(data) as { runId: string; sessionId: string }
+    onEvent({ type: 'start', ...parsed })
+  } else if (eventName === 'text_delta') {
+    onEvent({ type: 'text_delta', text: JSON.parse(data).text ?? '' })
+  } else if (eventName === 'tool_call') {
+    onEvent({ type: 'tool_call', toolCall: JSON.parse(data) as ToolCall })
+  } else if (eventName === 'tool_result') {
+    onEvent({ type: 'tool_result', toolResult: JSON.parse(data) as ToolExecution })
+  } else if (eventName === 'trace') {
+    onEvent({ type: 'trace', trace: JSON.parse(data) as TraceEvent })
+  } else if (eventName === 'done') {
+    onEvent({ type: 'done', response: JSON.parse(data) as ChatResponse })
+  } else if (eventName === 'error') {
+    const message = JSON.parse(data).message ?? 'Stream error'
+    onEvent({ type: 'error', message })
+    onError(message)
+  }
 }
 
 export async function getMessages(sessionId: string): Promise<Message[]> {
