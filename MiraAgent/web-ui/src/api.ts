@@ -40,6 +40,7 @@ export function streamChat(
     characterId?: string
     content: string
     enabledTools?: string[]
+    images?: string[]
   },
   onEvent: (event: StreamEvent) => void,
   onError: (err: string) => void,

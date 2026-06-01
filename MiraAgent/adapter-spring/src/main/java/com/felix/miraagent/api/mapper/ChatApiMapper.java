@@ -4,6 +4,7 @@ import com.felix.miraagent.agent.ChatInput;
 import com.felix.miraagent.agent.RunResult;
 import com.felix.miraagent.api.dto.ChatApiRequest;
 import com.felix.miraagent.api.dto.ChatApiResponse;
+import com.felix.miraagent.api.service.ImageAttachmentResolver;
 import com.felix.miraagent.model.StreamCallback;
 import com.felix.miraagent.tools.ToolExecutionResult;
 import org.springframework.stereotype.Component;
@@ -13,6 +14,12 @@ import java.util.UUID;
 
 @Component
 public class ChatApiMapper {
+
+    private final ImageAttachmentResolver imageResolver;
+
+    public ChatApiMapper(ImageAttachmentResolver imageResolver) {
+        this.imageResolver = imageResolver;
+    }
 
     public ChatInput toInput(ChatApiRequest req) {
         return toInput(req, null, null);
@@ -28,6 +35,7 @@ public class ChatApiMapper {
                 .characterId(req.getCharacterId())
                 .content(req.getContent())
                 .enabledTools(req.getEnabledTools() != null ? req.getEnabledTools() : List.of())
+                .imageDataUrls(imageResolver.resolve(req.getImages()))
                 .stream(req.isStream())
                 .streamCallback(streamCallback)
                 .build();

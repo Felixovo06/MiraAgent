@@ -12,6 +12,8 @@ public class ChatApiRequest {
     private String characterId;
     private String content;
     private List<String> enabledTools;
+    /** 上传到工作区的图片文件名，本轮内联为多模态图片发给模型。 */
+    private List<String> images;
     @JsonProperty("stream")
     private boolean stream;
 }

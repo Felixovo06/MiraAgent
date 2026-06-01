@@ -167,7 +167,18 @@ public class OpenAICompatibleModelClient implements ModelClient {
             var m = new LinkedHashMap<String, Object>();
             m.put("role", msg.getRole().name().toLowerCase());
 
-            if (msg.getContent() != null) {
+            List<String> images = msg.getImageDataUrls();
+            if (images != null && !images.isEmpty()) {
+                // 多模态：content 改为 [{type:text},{type:image_url}...]（OpenAI 兼容格式）
+                List<Map<String, Object>> parts = new ArrayList<>();
+                if (msg.getContent() != null && !msg.getContent().isEmpty()) {
+                    parts.add(Map.of("type", "text", "text", msg.getContent()));
+                }
+                for (String url : images) {
+                    parts.add(Map.of("type", "image_url", "image_url", Map.of("url", url)));
+                }
+                m.put("content", parts);
+            } else if (msg.getContent() != null) {
                 m.put("content", msg.getContent());
             }
 

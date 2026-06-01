@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import type { CharacterCard, DocumentInfo, Message, StreamEvent, ToolInfo, TraceEvent } from '../types'
-import { getCharacters, getMessages, getSessionTrace, getTools, interrupt, streamChat, uploadDocument } from '../api'
+import { documentDownloadUrl, getCharacters, getMessages, getSessionTrace, getTools, interrupt, streamChat, uploadDocument } from '../api'
 import { registerSession } from '../sessionStore'
 import MessageBubble from './MessageBubble'
 import ToolChip from './ToolChip'
 import TracePanel from './TracePanel'
 import './ChatView.css'
+
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i
+const isImageName = (name: string) => IMAGE_EXT.test(name)
 
 interface Props {
   sessionId: string
@@ -114,15 +117,17 @@ export default function ChatView({ sessionId, userId }: Props) {
     if ((!typed && attachments.length === 0) || streaming) return
     setError(null)
 
-    // 有附件时：在消息前注明已上传的文档，并确保文档工具放行（即便用户没在工具栏勾选）。
-    const attachNote =
-      attachments.length > 0
-        ? `[已上传文档：${attachments.map((a) => a.name).join('、')}]\n`
-        : ''
-    const content = attachNote + (typed || '请处理我上传的文档。')
+    // 区分图片与文档：图片内联给多模态模型；文档走 document_read 工具。
+    const imageNames = attachments.filter((a) => isImageName(a.name)).map((a) => a.name)
+    const docNames = attachments.filter((a) => !isImageName(a.name)).map((a) => a.name)
+
+    const imgNote = imageNames.map((n) => `[图片：${n}]`).join('')
+    const docNote = docNames.length > 0 ? `[已上传文档：${docNames.join('、')}]\n` : ''
+    const fallback = imageNames.length > 0 ? '看看这张图片。' : '请处理我上传的文档。'
+    const content = imgNote + docNote + (typed || fallback)
 
     const sendTools = new Set(enabled)
-    if (attachments.length > 0) {
+    if (docNames.length > 0) {
       sendTools.add('document_read')
       sendTools.add('document_list')
       sendTools.add('document_write')
@@ -144,7 +149,7 @@ export default function ChatView({ sessionId, userId }: Props) {
     accRef.current = ''
 
     abortRef.current = streamChat(
-      { userId, sessionId, characterId, content, enabledTools: Array.from(sendTools) },
+      { userId, sessionId, characterId, content, enabledTools: Array.from(sendTools), images: imageNames },
       (ev: StreamEvent) => {
         if (ev.type === 'start') {
           runIdRef.current = ev.runId
@@ -287,16 +292,23 @@ export default function ChatView({ sessionId, userId }: Props) {
 
       {attachments.length > 0 && (
         <div className="attach-bar">
-          {attachments.map((a) => (
-            <span key={a.name} className="attach-chip" title={a.name}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" width="13" height="13">
-                <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" strokeLinejoin="round" />
-                <path d="M14 3v5h5" strokeLinejoin="round" />
-              </svg>
-              <span className="attach-name">{a.name}</span>
-              <button className="attach-x" onClick={() => removeAttachment(a.name)} title="移除">×</button>
-            </span>
-          ))}
+          {attachments.map((a) =>
+            isImageName(a.name) ? (
+              <span key={a.name} className="attach-img" title={a.name}>
+                <img src={documentDownloadUrl(a.name)} alt={a.name} />
+                <button className="attach-x attach-x-img" onClick={() => removeAttachment(a.name)} title="移除">×</button>
+              </span>
+            ) : (
+              <span key={a.name} className="attach-chip" title={a.name}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" width="13" height="13">
+                  <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8l-5-5Z" strokeLinejoin="round" />
+                  <path d="M14 3v5h5" strokeLinejoin="round" />
+                </svg>
+                <span className="attach-name">{a.name}</span>
+                <button className="attach-x" onClick={() => removeAttachment(a.name)} title="移除">×</button>
+              </span>
+            ),
+          )}
         </div>
       )}
 
@@ -312,7 +324,7 @@ export default function ChatView({ sessionId, userId }: Props) {
           className="attach-btn"
           onClick={() => fileInputRef.current?.click()}
           disabled={streaming || uploading}
-          title="上传文档（PDF / Word / Excel / PPT / 文本…）"
+          title="上传图片或文档（图片走视觉理解，文档走解析）"
         >
           {uploading ? (
             <span className="attach-spin" />

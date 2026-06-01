@@ -18,6 +18,9 @@ public class ChatInput {
     String content;
     @Singular
     List<String> enabledTools;
+    /** 多模态图片附件（data URL）；仅本轮随用户消息发给模型，不持久化。 */
+    @Singular
+    List<String> imageDataUrls;
     String model;
     @Builder.Default
     boolean stream = false;

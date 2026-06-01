@@ -60,10 +60,16 @@ public class DefaultAgentRuntime implements AgentRuntime {
                 .role(MessageRole.USER)
                 .content(input.getContent())
                 .build();
+        // 持久化的用户消息不含图片（base64 太大、且只在本轮给模型看）；
+        // 发往模型的副本才挂图片，确保任何 store 都只本轮带图、历史不重发。
         sessionStore.appendMessage(input.getSessionId(), userMessage);
 
+        Message userMessageForModel = input.getImageDataUrls().isEmpty()
+                ? userMessage
+                : userMessage.toBuilder().imageDataUrls(input.getImageDataUrls()).build();
+
         List<Message> messages = new java.util.ArrayList<>(history);
-        messages.add(userMessage);
+        messages.add(userMessageForModel);
 
         String runId = input.getRunId() != null ? input.getRunId() : UUID.randomUUID().toString();
         var signal = new InterruptSignal();

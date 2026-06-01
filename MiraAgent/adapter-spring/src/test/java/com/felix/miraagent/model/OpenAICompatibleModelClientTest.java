@@ -146,6 +146,45 @@ class OpenAICompatibleModelClientTest {
         assertEquals(45, response.getUsage().getOutputTokens());
     }
 
+    @Test
+    void streamChatSendsMultimodalContentWhenMessageHasImages() throws IOException {
+        var captured = new java.util.concurrent.atomic.AtomicReference<String>();
+        server = HttpServer.create(new InetSocketAddress(0), 0);
+        server.createContext("/chat/completions", exchange -> {
+            captured.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            sendSse(exchange, """
+                    data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}
+
+                    data: [DONE]
+
+                    """);
+        });
+        server.start();
+
+        ModelProperties props = new ModelProperties();
+        props.setBaseUrl("http://localhost:" + server.getAddress().getPort());
+        props.setApiKey("test-key");
+        props.setName("test-model");
+        OpenAICompatibleModelClient client = new OpenAICompatibleModelClient(
+                RestClient.builder().baseUrl(props.getBaseUrl()).build(), props, new ObjectMapper());
+
+        client.streamChat(
+                ChatRequest.builder()
+                        .message(Message.builder()
+                                .role(MessageRole.USER)
+                                .content("这是什么")
+                                .imageDataUrl("data:image/png;base64,AAAA")
+                                .build())
+                        .build(),
+                delta -> { }).await();
+
+        String body = captured.get();
+        assertNotNull(body);
+        assertTrue(body.contains("\"image_url\""), "应发出多模态 image_url 部件");
+        assertTrue(body.contains("data:image/png;base64,AAAA"), "应内联图片 data URL");
+        assertTrue(body.contains("\"这是什么\""), "文字部件应保留");
+    }
+
     private void sendSse(com.sun.net.httpserver.HttpExchange exchange, String body) throws IOException {
         byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "text/event-stream");

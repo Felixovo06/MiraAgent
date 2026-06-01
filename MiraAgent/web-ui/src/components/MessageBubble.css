@@ -34,6 +34,14 @@
 }
 .bubble-text { white-space: pre-wrap; word-break: break-word; }
 
+/* 用户消息内的图片预览 */
+.bubble-imgs { display: flex; flex-wrap: wrap; gap: 8px; }
+.bubble-imgs:not(:only-child) { margin-bottom: 8px; }
+.bubble-img {
+  max-width: 220px; max-height: 220px; border-radius: 12px; display: block;
+  border: 1px solid rgba(0,0,0,0.12);
+}
+
 /* markdown 渲染（仅 assistant 气泡） */
 .bubble-md { word-break: break-word; }
 .bubble-md > :first-child { margin-top: 0; }

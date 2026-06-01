@@ -129,3 +129,14 @@
   font-size: 13px; line-height: 1; display: grid; place-items: center;
 }
 .attach-x:hover { background: rgba(255,122,122,0.18); color: var(--danger); }
+
+.attach-img {
+  position: relative; display: inline-block; border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--stroke); animation: rise 0.25s ease both;
+}
+.attach-img img { display: block; width: 56px; height: 56px; object-fit: cover; }
+.attach-x-img {
+  position: absolute; top: 3px; right: 3px; width: 17px; height: 17px;
+  background: rgba(0,0,0,0.55); color: #fff;
+}
+.attach-x-img:hover { background: rgba(255,122,122,0.85); color: #fff; }
