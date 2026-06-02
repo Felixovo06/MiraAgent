@@ -19,8 +19,9 @@ function hasMarkdownBlock(s: string): boolean {
 }
 
 /**
- * 把 assistant 文本切成多个气泡：先按 [[break]] 强分隔；
- * 每段若是纯文本则按换行继续拆（日常聊天=连发短消息），含 markdown 块则整段保留。
+ * 把 assistant 文本切成多个气泡：连发只认 [[break]] 强分隔。
+ * 每段若是纯文本，仅按空行(段落)再拆——单换行(如逐行列点)留在同一条气泡，
+ * 避免一份本该整体阅读的清单被打散成一堆；含 markdown 块则整段保留。
  */
 function toBubbles(content: string): string[] {
   const out: string[] = []
@@ -30,9 +31,9 @@ function toBubbles(content: string): string[] {
     if (hasMarkdownBlock(t)) {
       out.push(t)
     } else {
-      for (const line of t.split(/\n+/)) {
-        const lt = line.trim()
-        if (lt) out.push(lt)
+      for (const para of t.split(/\n{2,}/)) {
+        const pt = para.trim()
+        if (pt) out.push(pt)
       }
     }
   }
