@@ -331,6 +331,6 @@
     "userMessage": "你还记得我住哪个城市、做什么工作吗？",
     "memorySetup": ["自我介绍一下，我叫阿杰，住在杭州，是一名后端程序员。"],
     "enabledTools": ["write_memory", "recall_memory"],
-    "assertContains": ["杭州", "程序员"]
+    "assertContains": ["杭州", "后端"]
   }
 ]
