@@ -120,8 +120,14 @@ class MemoryRetrievalEvalTest {
         double avgP = sumP / QUERIES.size();
         double avgR = sumR / QUERIES.size();
         double top1Rate = (double) top1Hits / QUERIES.size();
-        System.out.printf("== 汇总: Precision=%.3f  Recall=%.3f  Top-1=%.3f ==%n", avgP, avgR, top1Rate);
-        System.out.println("(目标基线: P≥0.80 R≥0.75 Top-1≥0.85)");
+        // Precision 受 top-k 与相关集大小约束:每查询最高 = min(k, |relevant|)/k,
+        // 故 P 不宜定绝对高基线,而以"逼近理论上限"为目标;Recall/Top-1 才反映召回质量。
+        double idealP = QUERIES.stream()
+                .mapToDouble(q -> Math.min(k, q.relevant().size()) / (double) k)
+                .average().orElse(0);
+        System.out.printf("== 汇总: Precision=%.3f (理论上限 %.3f)  Recall=%.3f  Top-1=%.3f ==%n",
+                avgP, idealP, avgR, top1Rate);
+        System.out.println("(目标基线: Precision 逼近理论上限  Recall≥0.90  Top-1≥0.90)");
 
         // 这是"测量型"评测:职责是出 P/R 数字,不以模型/检索质量硬性 gate(故不对阈值断言)。
         // 只校验机制可用:确为混合检索器、有结果返回。质量阈值作为基线供回归跟踪。
