@@ -17,3 +17,8 @@ Thumbs.db
 
 # 生成产物
 output/
+
+# 内部资料,不对外公开
+docs/
+CLAUDE.md
+hermes-agent/
