@@ -162,6 +162,7 @@ public class OpenAICompatibleModelClient implements ModelClient {
     }
 
     private List<Map<String, Object>> convertMessages(List<com.felix.miraagent.model.Message> messages) {
+        messages = sanitizeToolSequence(messages);
         var result = new ArrayList<Map<String, Object>>();
         for (var msg : messages) {
             var m = new LinkedHashMap<String, Object>();
@@ -200,6 +201,79 @@ public class OpenAICompatibleModelClient implements ModelClient {
             result.add(m);
         }
         return result;
+    }
+
+    private static final ObjectMapper SANITIZE_JSON = new ObjectMapper();
+
+    /** tool_call.arguments 必须是合法 JSON，否则发给模型会 400 unexpected end of data。 */
+    private static boolean isValidJson(String s) {
+        if (s == null || s.isBlank()) {
+            return true;
+        }
+        try {
+            SANITIZE_JSON.readTree(s);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * 规整工具调用序列，避免 OpenAI 兼容端点因孤儿或损坏 tool_call 报 400/500：
+     * <ul>
+     *   <li>正向孤儿：assistant 声明的 tool_call 没有 tool 结果 → 紧随补一条合成 error 结果；</li>
+     *   <li>反向孤儿：tool 结果找不到对应发起 → 剔除；</li>
+     *   <li>损坏入参：tool_call.arguments 不是合法 JSON（被截断等）→ 置为 {} 以保证请求合法。</li>
+     * </ul>
+     * 工具调用被中断、截断或异常未回填时会留下这类畸形，不规整则整个会话会永久报错。
+     */
+    static List<Message> sanitizeToolSequence(List<Message> messages) {
+        Set<String> declared = new HashSet<>();
+        Set<String> satisfied = new HashSet<>();
+        for (var msg : messages) {
+            if (msg.getToolCalls() != null) {
+                for (var tc : msg.getToolCalls()) declared.add(tc.getId());
+            }
+            if (msg.getRole() == MessageRole.TOOL && msg.getToolCallId() != null) {
+                satisfied.add(msg.getToolCallId());
+            }
+        }
+        var out = new ArrayList<Message>();
+        for (var msg : messages) {
+            // 反向孤儿：tool 结果没有对应的 assistant tool_call → 剔除
+            if (msg.getRole() == MessageRole.TOOL
+                    && (msg.getToolCallId() == null || !declared.contains(msg.getToolCallId()))) {
+                continue;
+            }
+            if (msg.getRole() == MessageRole.ASSISTANT && msg.getToolCalls() != null && !msg.getToolCalls().isEmpty()) {
+                // 损坏入参修复：非法 JSON 的 arguments 置为 {}
+                boolean broken = msg.getToolCalls().stream().anyMatch(tc -> !isValidJson(tc.getArguments()));
+                Message emit = msg;
+                if (broken) {
+                    var fixed = msg.getToolCalls().stream()
+                            .map(tc -> isValidJson(tc.getArguments()) ? tc
+                                    : ToolCall.builder().id(tc.getId()).name(tc.getName()).arguments("{}").build())
+                            .toList();
+                    emit = msg.toBuilder().clearToolCalls().toolCalls(fixed).build();
+                }
+                out.add(emit);
+                // 正向孤儿：缺结果 → 紧随补合成结果（satisfied.add 返回 true 即原本缺失）
+                for (var tc : msg.getToolCalls()) {
+                    if (satisfied.add(tc.getId())) {
+                        out.add(Message.builder()
+                                .id(UUID.randomUUID().toString())
+                                .role(MessageRole.TOOL)
+                                .toolCallId(tc.getId())
+                                .toolName(tc.getName())
+                                .content("[工具调用未完成：上一次执行被中断或失败，无结果]")
+                                .build());
+                    }
+                }
+            } else {
+                out.add(msg);
+            }
+        }
+        return out;
     }
 
     private List<Map<String, Object>> convertTools(List<ToolDefinition> tools) {

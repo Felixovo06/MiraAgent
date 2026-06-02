@@ -49,7 +49,7 @@ create table if not exists tool_executions (
     session_id           text        not null,
     tool_call_id         text        not null,
     tool_name            text        not null,
-    arguments            jsonb,
+    arguments            text,
     status               text        not null,
     model_visible_content text,
     error_message        text,

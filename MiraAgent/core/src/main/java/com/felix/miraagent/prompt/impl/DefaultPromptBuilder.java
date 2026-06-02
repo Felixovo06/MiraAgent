@@ -21,6 +21,16 @@ public class DefaultPromptBuilder implements PromptBuilder {
     private final StyleConstraintComposer styleComposer;
     private final StyleConstraintProvider styleConstraintProvider;
 
+    private static final String MESSAGE_SPLIT_PROTOCOL = """
+            # 消息分隔
+            像真人聊天那样自然分条，别把回复挤成一大段：
+            - 把不同的话分成多条短消息发出；想明确分条时写 [[break]]。
+            - 每条尽量简短，常常一句一条最自然。
+            - 不要把一句完整的话从中间拆开，也不要每个标点都拆。
+
+            示例：
+            没什么。[[break]]你怎么洗这么快。""";
+
     public DefaultPromptBuilder() {
         this(null);
     }
@@ -62,6 +72,9 @@ public class DefaultPromptBuilder implements PromptBuilder {
         if (!characterSection.isBlank()) {
             parts.add(characterSection);
         }
+
+        // 消息分隔协议：固定注入，让模型可主动把回复拆成多条连续消息
+        parts.add(MESSAGE_SPLIT_PROTOCOL);
 
         if (hasText(request.getUserProfileSummary())) {
             parts.add("# User Profile\n\n" + request.getUserProfileSummary());

@@ -10,6 +10,34 @@ interface Props {
 }
 
 const IMG_MARKER = /\[图片：([^\]]+)\]/g
+/** AI 主动分条发送的强分隔标记。 */
+const BREAK = '[[break]]'
+
+/** 含 markdown 块结构（代码块/列表/标题/表格/引用）时不按换行拆，避免拆坏排版。 */
+function hasMarkdownBlock(s: string): boolean {
+  return /```|^[ \t]*([-*+]|\d+\.)[ \t]+|^[ \t]*#{1,6}[ \t]+|^[ \t]*>[ \t]?|^.*\|.*\|/m.test(s)
+}
+
+/**
+ * 把 assistant 文本切成多个气泡：先按 [[break]] 强分隔；
+ * 每段若是纯文本则按换行继续拆（日常聊天=连发短消息），含 markdown 块则整段保留。
+ */
+function toBubbles(content: string): string[] {
+  const out: string[] = []
+  for (const block of content.split(BREAK)) {
+    const t = block.trim()
+    if (!t) continue
+    if (hasMarkdownBlock(t)) {
+      out.push(t)
+    } else {
+      for (const line of t.split(/\n+/)) {
+        const lt = line.trim()
+        if (lt) out.push(lt)
+      }
+    }
+  }
+  return out
+}
 
 /** 从用户消息里抽出 [图片：name] 标记，返回图片名列表与去掉标记后的文字。 */
 function splitImages(content: string): { images: string[]; text: string } {
@@ -22,52 +50,54 @@ function splitImages(content: string): { images: string[]; text: string } {
 }
 
 export default function MessageBubble({ role, content, pending }: Props) {
-  const isUser = role === 'user'
-  const hasContent = content.length > 0
-  const { images, text: userText } = isUser ? splitImages(content) : { images: [], text: content }
-
-  if (isUser && images.length > 0) {
+  if (role === 'user') {
+    const { images, text } = splitImages(content)
     return (
       <div className="row row-user">
         <div className="bubble bubble-user">
-          <div className="bubble-imgs">
-            {images.map((name) => (
-              <a key={name} href={documentDownloadUrl(name)} target="_blank" rel="noreferrer" title={name}>
-                <img className="bubble-img" src={documentDownloadUrl(name)} alt={name} />
-              </a>
-            ))}
-          </div>
-          {userText && <p className="bubble-text">{userText}</p>}
+          {images.length > 0 && (
+            <div className="bubble-imgs">
+              {images.map((name) => (
+                <a key={name} href={documentDownloadUrl(name)} target="_blank" rel="noreferrer" title={name}>
+                  <img className="bubble-img" src={documentDownloadUrl(name)} alt={name} />
+                </a>
+              ))}
+            </div>
+          )}
+          {text && <p className="bubble-text">{text}</p>}
         </div>
       </div>
     )
   }
 
+  // assistant：拆成多个连续气泡，模拟真人连发短消息
+  const bubbles = toBubbles(content)
+
   return (
-    <div className={`row ${isUser ? 'row-user' : 'row-bot'}`}>
-      {!isUser && (
-        <div className="avatar">
-          <img src="/mira-logo.png" alt="Mira" className="avatar-logo" />
+    <div className="row row-bot">
+      <div className="avatar">
+        <img src="/mira-logo.png" alt="Mira" className="avatar-logo" />
+      </div>
+      {bubbles.length > 0 ? (
+        <div className="bubble-stack">
+          {bubbles.map((seg, i) => (
+            <div className="bubble bubble-bot" key={i}>
+              <div className="bubble-md">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{seg}</ReactMarkdown>
+                {pending && i === bubbles.length - 1 && <span className="cursor" />}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="bubble bubble-bot">
+          {pending ? (
+            <span className="thinking"><i /><i /><i /></span>
+          ) : (
+            <p className="bubble-text" />
+          )}
         </div>
       )}
-      <div className={`bubble ${isUser ? 'bubble-user' : 'bubble-bot'}`}>
-        {hasContent ? (
-          isUser ? (
-            <p className="bubble-text">{content}</p>
-          ) : (
-            <div className="bubble-md">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
-              {pending && <span className="cursor" />}
-            </div>
-          )
-        ) : pending ? (
-          <span className="thinking">
-            <i /><i /><i />
-          </span>
-        ) : (
-          <p className="bubble-text" />
-        )}
-      </div>
     </div>
   )
 }

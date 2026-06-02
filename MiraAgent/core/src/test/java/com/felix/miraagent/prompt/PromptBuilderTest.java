@@ -128,6 +128,12 @@ class PromptBuilderTest {
     }
 
     @Test
+    void messageSplitProtocolAlwaysInjected() {
+        var prompt = builder.build(PromptBuildRequest.builder().build()).getStableSystemPrompt();
+        assertTrue(prompt.contains("[[break]]"), "消息分隔协议应固定注入 stableSystemPrompt");
+    }
+
+    @Test
     void userImageDataUrlsSurviveEphemeralRewrite() {
         // 回归：ephemeral 重建最新 USER 消息时，imageDataUrls 不能丢
         var userMsg = Message.builder()

@@ -34,6 +34,10 @@
 }
 .bubble-text { white-space: pre-wrap; word-break: break-word; }
 
+/* assistant 连发多气泡：纵向堆叠、间距小于消息间距 */
+.bubble-stack { display: flex; flex-direction: column; gap: 5px; max-width: 76%; align-items: flex-start; }
+.bubble-stack .bubble { max-width: 100%; }
+
 /* 用户消息内的图片预览 */
 .bubble-imgs { display: flex; flex-wrap: wrap; gap: 8px; }
 .bubble-imgs:not(:only-child) { margin-bottom: 8px; }

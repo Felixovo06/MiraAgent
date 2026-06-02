@@ -20,7 +20,7 @@ mira:
     api-key: ${MIRA_MODEL_API_KEY}
     name: ${MIRA_MODEL_NAME:mimov2.5flash}
     temperature: ${MIRA_MODEL_TEMPERATURE:0.7}
-    max-tokens: ${MIRA_MODEL_MAX_TOKENS:2048}
+    max-tokens: ${MIRA_MODEL_MAX_TOKENS:8192}
 
   # MCP 接入（默认关闭）。enabled=true 后，启动时连接各 server 并把工具桥接进统一 ToolRegistry，
   # 复用同一套权限/trace/artifact 管理。示例自带 server：scripts/mcp/echo_mcp_server.py。
