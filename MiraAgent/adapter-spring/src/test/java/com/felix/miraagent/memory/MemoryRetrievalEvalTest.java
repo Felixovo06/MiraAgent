@@ -150,65 +150,66 @@ class MemoryRetrievalEvalTest {
         Instant tenDaysAgo = Instant.now().minusSeconds(10L * 24 * 3600);
         Instant recent = Instant.now();
 
-        // 目标:10 天前写入的稳定事实,覆盖多类型话题(普适性),各配一个自然语言查询
+        // 目标:10 天前写入的稳定事实(PROFILE/PREFERENCE),覆盖多类型话题(普适性),各配一个自然语言查询
         List<Target> targets = List.of(
-                new Target("t_allergy", "用户对花生过敏，吃任何东西都要避开花生", "我对什么食物过敏来着"),
-                new Target("t_pet", "用户养了一只布偶猫，名字叫汤圆", "我家那只猫叫什么名字"),
-                new Target("t_job", "用户是一名后端工程师，目前在杭州工作", "我是做什么工作的"),
-                new Target("t_hobby", "用户每个周末都喜欢去爬山", "我周末一般喜欢做什么"),
-                new Target("t_music", "用户特别喜欢听爵士钢琴曲", "我平时爱听哪种音乐"),
-                new Target("t_anniversary", "用户和女朋友的纪念日是 5 月 20 日", "我和女朋友的纪念日是哪天"));
+                new Target("t_allergy", "用户对花生过敏，吃任何东西都要避开花生", MemoryCategory.PROFILE, "我对什么食物过敏来着"),
+                new Target("t_pet", "用户养了一只布偶猫，名字叫汤圆", MemoryCategory.PROFILE, "我家那只猫叫什么名字"),
+                new Target("t_job", "用户是一名后端工程师，目前在杭州工作", MemoryCategory.PROFILE, "我是做什么工作的"),
+                new Target("t_hobby", "用户每个周末都喜欢去爬山", MemoryCategory.PREFERENCE, "我周末一般喜欢做什么"),
+                new Target("t_music", "用户特别喜欢听爵士钢琴曲", MemoryCategory.PREFERENCE, "我平时爱听哪种音乐"),
+                new Target("t_anniversary", "用户和女朋友的纪念日是 5 月 20 日", MemoryCategory.PROFILE, "我和女朋友的纪念日是哪天"));
 
-        // 噪声:大量较新的无关记忆,含 hard negative(与某查询共享词/话题但不是答案),专压区分度
-        List<String> noise = List.of(
-                "用户今天觉得天气有点闷热不太舒服",
-                "用户最近在研究各种手冲咖啡的豆子",
-                "用户帮邻居照看过一条金毛犬",            // 近 pet:是狗不是猫
-                "用户最近工作上的压力比较大",            // 近 job
-                "用户说自己其实不太能吃辣",              // 近 allergy:口味不是过敏
-                "用户上个月去三亚旅游晒黑了",
-                "用户在考虑要不要换一份新工作",          // 近 job
-                "用户周末有时会在家打游戏",              // 近 hobby
-                "用户提到楼下新开了一家奶茶店",
-                "用户最近在追一部悬疑电视剧",
-                "用户说他表弟也养了猫",                  // 近 pet:别人的猫
-                "用户喜欢在通勤路上听播客",              // 近 music:播客不是爵士
-                "用户买了一双新的跑鞋",
-                "用户的同事下周要请婚假",                // 近 anniversary:别人的
-                "用户最近在背英语单词准备考试",
-                "用户家里的绿萝养得不错",
-                "用户说自己对花粉有点敏感",              // 近 allergy:花粉不是花生
-                "用户中午经常点轻食沙拉",
-                "用户在学着自己做木工",
-                "用户喜欢收集各地的冰箱贴",
-                "用户最近迷上了拼乐高",
-                "用户偶尔会去健身房撸铁",                // 近 hobby
-                "用户说北京的冬天太干燥",
-                "用户的手机最近老是卡顿",
-                "用户在看一本关于历史的书",
-                "用户喜欢用机械键盘打字",
-                "用户养过一只乌龟但是后来送人了",        // 近 pet:乌龟且已送走
-                "用户最近睡眠质量不太好",
-                "用户说想学一门乐器比如吉他",            // 近 music:想学吉他不是听爵士
-                "用户周末去看了场电影",                  // 近 hobby
-                "用户最近在减糖控制饮食",
-                "用户的车该做保养了",
-                "用户喜欢逛二手书店",
-                "用户说公司食堂的菜越来越难吃",
-                "用户在攒钱想买个相机",
-                "用户最近换了个发型",
-                "用户说他爸妈下个月来看他",
-                "用户喜欢雨天待在家里",
-                "用户在用一个新的记账 App",
-                "用户最近报了个线上课程");
+        // 噪声:大量较新记忆,按真实写入会归的类目标注——瞬时发生=EVENT(低权重),稳定喜好=PREFERENCE。
+        // 含 hard negative(与查询共享话题但非答案):多数是 EVENT,正是现实里区别于稳定事实之处。
+        List<Noise> noise = List.of(
+                new Noise("用户今天觉得天气有点闷热不太舒服", MemoryCategory.EVENT),
+                new Noise("用户最近在研究各种手冲咖啡的豆子", MemoryCategory.EVENT),
+                new Noise("用户帮邻居照看过一条金毛犬", MemoryCategory.EVENT),          // 近 pet:狗不是猫
+                new Noise("用户最近工作上的压力比较大", MemoryCategory.EVENT),          // 近 job
+                new Noise("用户说自己其实不太能吃辣", MemoryCategory.PREFERENCE),        // 近 allergy:口味
+                new Noise("用户上个月去三亚旅游晒黑了", MemoryCategory.EVENT),
+                new Noise("用户在考虑要不要换一份新工作", MemoryCategory.EVENT),          // 近 job:瞬时考虑
+                new Noise("用户周末有时会在家打游戏", MemoryCategory.PREFERENCE),        // 近 hobby
+                new Noise("用户提到楼下新开了一家奶茶店", MemoryCategory.EVENT),
+                new Noise("用户最近在追一部悬疑电视剧", MemoryCategory.EVENT),
+                new Noise("用户说他表弟也养了猫", MemoryCategory.EVENT),                  // 近 pet:别人的
+                new Noise("用户喜欢在通勤路上听播客", MemoryCategory.PREFERENCE),        // 近 music:不是爵士
+                new Noise("用户买了一双新的跑鞋", MemoryCategory.EVENT),
+                new Noise("用户的同事下周要请婚假", MemoryCategory.EVENT),                // 近 anniversary:别人的
+                new Noise("用户最近在背英语单词准备考试", MemoryCategory.EVENT),
+                new Noise("用户家里的绿萝养得不错", MemoryCategory.EVENT),
+                new Noise("用户说自己对花粉有点敏感", MemoryCategory.PROFILE),            // 近 allergy:花粉不是花生
+                new Noise("用户中午经常点轻食沙拉", MemoryCategory.PREFERENCE),
+                new Noise("用户在学着自己做木工", MemoryCategory.EVENT),
+                new Noise("用户喜欢收集各地的冰箱贴", MemoryCategory.PREFERENCE),
+                new Noise("用户最近迷上了拼乐高", MemoryCategory.EVENT),
+                new Noise("用户偶尔会去健身房撸铁", MemoryCategory.PREFERENCE),          // 近 hobby
+                new Noise("用户说北京的冬天太干燥", MemoryCategory.EVENT),
+                new Noise("用户的手机最近老是卡顿", MemoryCategory.EVENT),
+                new Noise("用户在看一本关于历史的书", MemoryCategory.EVENT),
+                new Noise("用户喜欢用机械键盘打字", MemoryCategory.PREFERENCE),
+                new Noise("用户养过一只乌龟但是后来送人了", MemoryCategory.EVENT),        // 近 pet:已送走
+                new Noise("用户最近睡眠质量不太好", MemoryCategory.EVENT),
+                new Noise("用户说想学一门乐器比如吉他", MemoryCategory.EVENT),            // 近 music:想学不是听爵士
+                new Noise("用户周末去看了场电影", MemoryCategory.EVENT),                  // 近 hobby:瞬时
+                new Noise("用户最近在减糖控制饮食", MemoryCategory.EVENT),
+                new Noise("用户的车该做保养了", MemoryCategory.EVENT),
+                new Noise("用户喜欢逛二手书店", MemoryCategory.PREFERENCE),
+                new Noise("用户说公司食堂的菜越来越难吃", MemoryCategory.EVENT),
+                new Noise("用户在攒钱想买个相机", MemoryCategory.EVENT),
+                new Noise("用户最近换了个发型", MemoryCategory.EVENT),
+                new Noise("用户说他爸妈下个月来看他", MemoryCategory.EVENT),
+                new Noise("用户喜欢雨天待在家里", MemoryCategory.PREFERENCE),
+                new Noise("用户在用一个新的记账 App", MemoryCategory.EVENT),
+                new Noise("用户最近报了个线上课程", MemoryCategory.EVENT));
 
-        // 播种:目标回填到 10 天前;噪声为"现在"写入
+        // 播种:目标(稳定事实)回填到 10 天前;噪声(多为瞬时)为"现在"写入
         for (Target t : targets) {
-            seedMemory(t.id(), t.content(), tenDaysAgo);
+            seedMemory(t.id(), t.content(), t.category(), tenDaysAgo);
         }
         int idx = 0;
-        for (String n : noise) {
-            seedMemory("noise_" + (idx++), n, recent);
+        for (Noise n : noise) {
+            seedMemory("noise_" + (idx++), n.content(), n.category(), recent);
         }
         System.out.printf("%n===== 长期记忆抗噪评测: %d 条「10 天前」目标 埋入 %d 条较新噪声 =====%n",
                 targets.size(), noise.size());
@@ -230,19 +231,24 @@ class MemoryRetrievalEvalTest {
         System.out.printf("== 汇总: Recall@%d=%.3f  Top-1=%.3f (目标 %d / 噪声 %d) ==%n",
                 k, recallAtK, top1Rate, targets.size(), noise.size());
 
-        // 普适性 gate:10 天前的目标记忆,埋在大量较新噪声里,仍应几乎全部能在 top-k 召回。
+        // 普适性 gate:10 天前的稳定事实,埋在大量较新噪声里,应几乎全部能召回(Recall@k),
+        // 且因类目感知重排(稳定 PROFILE/PREFERENCE > 瞬时 EVENT),多数应稳居首位(Top-1)。
         assertTrue(recallAtK >= 0.8,
                 "长期记忆抗噪不达标: Recall@" + k + "=" + recallAtK + "(老目标被较新噪声淹没)");
+        assertTrue(top1Rate >= 0.8,
+                "长期记忆 Top-1 不达标: Top-1=" + top1Rate + "(稳定事实未能压过瞬时噪声,检查类目权重/重排)");
     }
 
-    private record Target(String id, String content, String query) {}
+    private record Target(String id, String content, MemoryCategory category, String query) {}
+
+    private record Noise(String content, MemoryCategory category) {}
 
     /** 播种一条记忆:落库 + 真实 embedding + 回填指定时间戳(save() 强制 now(),故另用 UPDATE 改回)。 */
-    private void seedMemory(String id, String content, Instant ts) {
+    private void seedMemory(String id, String content, MemoryCategory category, Instant ts) {
         indexRepository.save(MemoryIndex.builder()
                 .id(id).userId(USER)
                 .scope(MemoryScope.GLOBAL)
-                .category(MemoryCategory.PROFILE)
+                .category(category)
                 .contentPreview(content)
                 .sourceUri("memory/eval/" + id)
                 .retrievalTerms(List.of())
