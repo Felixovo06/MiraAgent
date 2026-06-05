@@ -35,16 +35,20 @@ public class MemoryConfig {
                                                             Optional<MemoryIndexRepository> memoryIndexRepository,
                                                             Optional<AsyncEmbeddingIndexer> asyncEmbeddingIndexer,
                                                             Optional<MemoryWritePolicy> memoryWritePolicy,
+                                                            Optional<EmbeddingClient> embeddingClient,
                                                             MemoryProperties memoryProperties) {
         MemoryProperties.Dedup dedup = memoryProperties.getDedup();
         // 去重需索引支持；关闭去重时把 exact 阈值置 0 走直通
         double near = dedup.isEnabled() ? dedup.getNearThreshold() : 0;
         double exact = dedup.isEnabled() ? dedup.getExactThreshold() : 0;
+        double semNear = dedup.isEnabled() ? dedup.getSemanticNearThreshold() : 0;
+        double semExact = dedup.isEnabled() ? dedup.getSemanticExactThreshold() : 0;
         return new BlockingQueueMemoryWriter(memoryStore,
                 memoryIndexRepository.orElse(null),
                 asyncEmbeddingIndexer.orElse(null),
                 memoryWritePolicy.orElse(null),
-                near, exact);
+                embeddingClient.orElse(null),
+                near, exact, semNear, semExact);
     }
 
     @Bean

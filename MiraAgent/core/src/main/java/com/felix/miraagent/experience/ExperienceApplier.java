@@ -40,7 +40,8 @@ public class ExperienceApplier {
         if (memoryWriter != null) {
             for (MemoryWritePlan plan : result.getMemoryWrites()) {
                 try {
-                    memoryWriter.submit(MemoryWriteRequest.builder()
+                    // 异步提交：复盘落库不阻塞后台复盘线程，失败仅记日志、不穿透。
+                    memoryWriter.submitAsync(MemoryWriteRequest.builder()
                             .memoryId(UUID.randomUUID().toString())
                             .userId(request.getUserId())
                             .characterId("character".equalsIgnoreCase(plan.getScope()) ? request.getCharacterId() : null)
@@ -50,10 +51,15 @@ public class ExperienceApplier {
                             .sourceSessionId(request.getSessionId())
                             .sourceTraceId(plan.getSourceTraceId())
                             .confidence(toConfidencePercent(plan.getConfidence()))
-                            .build());
+                            .build())
+                            .whenComplete((r, ex) -> {
+                                if (ex != null) {
+                                    log.warn("Failed to apply memory write: {}", ex.getMessage());
+                                }
+                            });
                     memories++;
                 } catch (Exception e) {
-                    log.warn("Failed to apply memory write: {}", e.getMessage());
+                    log.warn("Failed to enqueue memory write: {}", e.getMessage());
                 }
             }
         }

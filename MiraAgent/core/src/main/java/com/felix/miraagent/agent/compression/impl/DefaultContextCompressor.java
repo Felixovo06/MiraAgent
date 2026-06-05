@@ -128,12 +128,13 @@ public class DefaultContextCompressor implements ContextCompressor {
         }
 
         if (memoryWriter != null) {
+            // 异步提交：压缩提炼的事实落库不阻塞主回复（压缩即学习、但不卡链路）。
             for (MemoryWriteRequest req : memoryWrites) {
-                try {
-                    memoryWriter.submit(req);
-                } catch (Exception e) {
-                    log.warn("Failed to write memory during compression. sessionId={}", sessionId, e);
-                }
+                memoryWriter.submitAsync(req).whenComplete((r, ex) -> {
+                    if (ex != null) {
+                        log.warn("Failed to write memory during compression. sessionId={}", sessionId, ex);
+                    }
+                });
             }
         }
 

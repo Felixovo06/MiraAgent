@@ -25,18 +25,30 @@ public class AsyncEmbeddingIndexer {
         }
         Thread.ofVirtual().start(() -> {
             try {
-                List<Float> vector = embeddingClient.embed(content);
-                String vectorStr = toVectorString(vector);
-                jdbc.update(
-                        "UPDATE memory_index SET embedding = ?::vector WHERE id = ?",
-                        vectorStr, memoryId
-                );
+                persist(memoryId, embeddingClient.embed(content));
             } catch (EmbeddingException e) {
                 log.warn("Failed to compute embedding for memory {}: {}", memoryId, e.getMessage());
             } catch (Exception e) {
                 log.warn("Unexpected error indexing embedding for memory {}", memoryId, e);
             }
         });
+    }
+
+    /**
+     * 同步持久化已算好的向量。写入路径已在后台 writer 线程上、不在主回复链路，
+     * 故此处同步落库以消除“写入后向量未就绪、向量召回漏掉新卡”的一致性窗口。
+     * 失败仅记日志、不抛：embedding 缺失只降级到词法召回，绝不阻断写入。
+     */
+    public void persist(String memoryId, List<Float> vector) {
+        if (vector == null || vector.isEmpty()) {
+            return;
+        }
+        try {
+            jdbc.update("UPDATE memory_index SET embedding = ?::vector WHERE id = ?",
+                    toVectorString(vector), memoryId);
+        } catch (Exception e) {
+            log.warn("Failed to persist embedding for memory {}", memoryId, e);
+        }
     }
 
     private String toVectorString(List<Float> vec) {

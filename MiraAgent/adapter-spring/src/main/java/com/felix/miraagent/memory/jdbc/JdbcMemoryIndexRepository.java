@@ -179,8 +179,63 @@ public class JdbcMemoryIndexRepository implements MemoryIndexRepository {
     }
 
     @Override
+    public Optional<SimilarMemory> findMostSimilarByVector(String userId, String characterId, MemoryCategory category,
+                                                           List<Float> embedding, double minSimilarity) {
+        if (embedding == null || embedding.isEmpty() || category == null) {
+            return Optional.empty();
+        }
+        String vectorStr = toVectorString(embedding);
+        StringBuilder sql = new StringBuilder("""
+                select id, user_id, character_id, scope, category,
+                       content_preview, source_uri, confidence,
+                       source_session_id, source_message_id,
+                       retrieval_terms, embedding_ref, archived_at,
+                       created_at, updated_at,
+                       1 - (embedding <=> ?::vector) as sim
+                from memory_index
+                where user_id = ? and category = ? and archived_at is null
+                  and embedding is not null
+                  and 1 - (embedding <=> ?::vector) >= ?
+                """);
+        List<Object> params = new ArrayList<>();
+        params.add(vectorStr);          // select 1 - (embedding <=> ?)
+        params.add(userId);
+        params.add(category.name());
+        params.add(vectorStr);          // where 1 - (embedding <=> ?) >= ?
+        params.add(minSimilarity);
+        if (characterId != null) {
+            sql.append(" and character_id = ?");
+            params.add(characterId);
+        } else {
+            sql.append(" and character_id is null");
+        }
+        sql.append(" order by embedding <=> ?::vector limit 1");
+        params.add(vectorStr);          // order by embedding <=> ?
+
+        RowMapper<MemoryIndex> mapper = memoryIndexRowMapper();
+        var rows = jdbc.query(sql.toString(),
+                (rs, rowNum) -> SimilarMemory.builder()
+                        .memory(mapper.mapRow(rs, rowNum))
+                        .similarity(rs.getDouble("sim"))
+                        .build(),
+                params.toArray());
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
+    }
+
+    @Override
     public void deleteAll(String userId) {
         jdbc.update("delete from memory_index where user_id = ?", userId);
+    }
+
+    private static String toVectorString(List<Float> vec) {
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < vec.size(); i++) {
+            if (i > 0) {
+                sb.append(',');
+            }
+            sb.append(vec.get(i));
+        }
+        return sb.append(']').toString();
     }
 
     private RowMapper<MemoryIndex> memoryIndexRowMapper() {
